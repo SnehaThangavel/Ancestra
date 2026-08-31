@@ -1,0 +1,410 @@
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useApp } from "../../context/AppContext";
+import { StatusBadge } from "../../components/common/StatusBadge";
+import { EmergencyBadge } from "../../components/common/EmergencyBadge";
+import {
+  CheckCircle,
+  Edit3,
+  XCircle,
+  FileText,
+  TrendingUp,
+  AlertTriangle,
+  Layers,
+  ShieldCheck,
+  Eye,
+  Check
+} from "lucide-react";
+
+export function ResultsPage() {
+  const navigate = useNavigate();
+  const { activeResult, updateAssessmentStatus, generateReportFromAssessment, currentUser } = useApp();
+  const [showHighlightOverlay, setShowHighlightOverlay] = useState(true);
+  const [notes, setNotes] = useState(activeResult?.expertNotes || "");
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+
+  const res = activeResult || {
+    id: "ASM-2026-089",
+    siteName: "Shore Temple, Mahabalipuram",
+    regionName: "East-Facing Rajasimhesvara Vimana",
+    date: new Date().toISOString().split("T")[0],
+    damageType: "Structural Crack",
+    severity: "High",
+    confidence: 0.94,
+    damageTrend: "Increasing",
+    emergencyLevel: "Critical",
+    recommendation: "Immediate structural shoring & salt extraction desalting regimen required.",
+    status: "Pending Review",
+    imageUrl: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
+  };
+
+  const handleConfirm = () => {
+    updateAssessmentStatus(res.id, "Confirmed", notes);
+  };
+
+  const handleModify = () => {
+    setIsEditingNotes(true);
+  };
+
+  const handleSaveNotes = () => {
+    updateAssessmentStatus(res.id, "Modified", notes);
+    setIsEditingNotes(false);
+  };
+
+  const handleReject = () => {
+    updateAssessmentStatus(res.id, "Rejected", notes);
+  };
+
+  const handleGenerateReport = () => {
+    generateReportFromAssessment(res);
+    navigate("/reports");
+  };
+
+  const isExpert = currentUser.role === "CONSERVATION_EXPERT";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+            <span className="module-badge">RES-05</span>
+            <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: 0 }}>
+              AI STRUCTURAL DAMAGE ASSESSMENT RESULT
+            </h1>
+          </div>
+          <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+            Assessment Record ID: <strong>{res.id}</strong> • Target Region: <strong>{res.regionName}</strong>
+          </p>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <StatusBadge status={res.status} />
+          <EmergencyBadge level={res.emergencyLevel} />
+        </div>
+      </div>
+
+      {/* Two Column Layout */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "24px" }}>
+        {/* Left Column: Image with AI Bounding Box Highlights */}
+        <div className="ancestra-card" style={{ padding: "16px" }}>
+          <div style={styles.imageCardHeader}>
+            <span style={styles.imageTitle}>COMPUTER VISION SEGMENTATION MAP</span>
+            <button
+              onClick={() => setShowHighlightOverlay(!showHighlightOverlay)}
+              className="btn-secondary"
+              style={{ padding: "3px 8px", fontSize: "11px" }}
+            >
+              <Eye size={12} />
+              <span>{showHighlightOverlay ? "Hide AI Overlay" : "Show AI Overlay"}</span>
+            </button>
+          </div>
+
+          <div style={styles.imageContainer}>
+            <img src={res.imageUrl} alt="Damage Assessment" style={styles.resultImage} />
+
+            {/* AI Bounding Box Overlay Simulation */}
+            {showHighlightOverlay && (
+              <div style={styles.boundingBox}>
+                <div style={styles.boxTag}>
+                  <span>STRUCTURAL CRACK (94%)</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={styles.overlayLegendRow}>
+            <div style={styles.legendItem}>
+              <span style={{ ...styles.legendDot, backgroundColor: "#DC2626" }} />
+              <span>Critical Fracture Polygon</span>
+            </div>
+            <div style={styles.legendItem}>
+              <span style={{ ...styles.legendDot, backgroundColor: "#D97706" }} />
+              <span>Salt Efflorescence Zone</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Key Findings & Assessment Result Card */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div className="ancestra-card">
+            <h3 className="font-serif-heading" style={{ fontSize: "16px", marginBottom: "14px" }}>
+              ASSESSMENT FINDINGS
+            </h3>
+
+            <div style={styles.metricsList}>
+              <div style={styles.metricRow}>
+                <span className="label-uppercase">DAMAGE TYPE</span>
+                <span style={styles.metricValue}>{res.damageType}</span>
+              </div>
+
+              <div style={styles.metricRow}>
+                <span className="label-uppercase">SEVERITY ESTIMATE</span>
+                <StatusBadge status={res.severity} />
+              </div>
+
+              <div style={styles.metricRow}>
+                <span className="label-uppercase">AI CONFIDENCE SCORE</span>
+                <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: "14px", color: "var(--accent-primary)" }}>
+                  {typeof res.confidence === "number" ? `${(res.confidence * 100).toFixed(0)}%` : res.confidence}
+                </span>
+              </div>
+
+              <div style={styles.metricRow}>
+                <span className="label-uppercase">DAMAGE TREND</span>
+                <span style={{ fontWeight: 600, color: res.damageTrend === "Increasing" ? "#DC2626" : "#16A34A" }}>
+                  {res.damageTrend}
+                </span>
+              </div>
+
+              <div style={styles.metricRow}>
+                <span className="label-uppercase">EMERGENCY LEVEL</span>
+                <EmergencyBadge level={res.emergencyLevel} />
+              </div>
+            </div>
+
+            <div style={styles.recBox}>
+              <div style={styles.recHeader}>
+                <AlertTriangle size={14} color="#A04022" />
+                <span className="label-uppercase" style={{ color: "#A04022" }}>
+                  RECOMMENDED ACTION
+                </span>
+              </div>
+              <p style={styles.recText}>{res.recommendation}</p>
+            </div>
+          </div>
+
+          {/* Expert Notes Card */}
+          <div className="ancestra-card">
+            <div style={styles.notesHeader}>
+              <span className="label-uppercase">EXPERT REVIEW NOTES</span>
+              {!isEditingNotes && (
+                <button
+                  onClick={() => setIsEditingNotes(true)}
+                  style={styles.editBtn}
+                >
+                  <Edit3 size={12} />
+                  <span>Edit</span>
+                </button>
+              )}
+            </div>
+
+            {isEditingNotes ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
+                <textarea
+                  className="form-textarea"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Enter conservator observation notes..."
+                />
+                <button
+                  onClick={handleSaveNotes}
+                  className="btn-secondary"
+                  style={{ alignSelf: "flex-end", padding: "4px 10px", fontSize: "11px" }}
+                >
+                  <Check size={12} />
+                  <span>Save Notes</span>
+                </button>
+              </div>
+            ) : (
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "6px" }}>
+                {notes || res.expertNotes || "No additional expert notes recorded."}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Assessment Metadata & Expert Action Bar */}
+      <div className="ancestra-card" style={styles.metaActionBar}>
+        <div style={styles.metaGroup}>
+          <div>
+            <span className="label-uppercase">HERITAGE SITE:</span>
+            <div style={{ fontWeight: 600 }}>{res.siteName}</div>
+          </div>
+          <div>
+            <span className="label-uppercase">ARCHITECTURAL REGION:</span>
+            <div style={{ fontWeight: 600 }}>{res.regionName}</div>
+          </div>
+          <div>
+            <span className="label-uppercase">ASSESSMENT DATE:</span>
+            <div style={{ fontFamily: "var(--font-mono)" }}>{res.date}</div>
+          </div>
+          <div>
+            <span className="label-uppercase">MODEL VERSION:</span>
+            <div style={{ fontFamily: "var(--font-mono)" }}>ANCESTRA CV v0.1</div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        {isExpert && (
+          <div style={styles.actionGroup}>
+            <button onClick={handleConfirm} className="btn-secondary">
+              <CheckCircle size={14} color="#16A34A" />
+              <span>Confirm Assessment</span>
+            </button>
+
+            <button onClick={handleModify} className="btn-secondary">
+              <Edit3 size={14} color="#D97706" />
+              <span>Modify</span>
+            </button>
+
+            <button onClick={handleReject} className="btn-outline-danger">
+              <XCircle size={14} />
+              <span>Reject</span>
+            </button>
+
+            <button onClick={handleGenerateReport} className="btn-primary">
+              <FileText size={14} />
+              <span>Generate Report</span>
+            </button>
+
+            <button onClick={() => navigate("/expert/damage-history")} className="btn-secondary">
+              <TrendingUp size={14} />
+              <span>View History</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  imageCardHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "10px"
+  },
+  imageTitle: {
+    fontSize: "11px",
+    fontFamily: "var(--font-sans)",
+    fontWeight: "700",
+    letterSpacing: "0.08em",
+    color: "#8E857B"
+  },
+  imageContainer: {
+    position: "relative",
+    width: "100%",
+    height: "360px",
+    borderRadius: "4px",
+    overflow: "hidden",
+    backgroundColor: "#1C1917"
+  },
+  resultImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover"
+  },
+  boundingBox: {
+    position: "absolute",
+    top: "22%",
+    left: "28%",
+    width: "44%",
+    height: "38%",
+    border: "2px dashed #DC2626",
+    backgroundColor: "rgba(220, 38, 38, 0.15)",
+    borderRadius: "4px"
+  },
+  boxTag: {
+    position: "absolute",
+    top: "-22px",
+    left: "0",
+    backgroundColor: "#DC2626",
+    color: "#FFFFFF",
+    fontSize: "9.5px",
+    fontFamily: "var(--font-mono)",
+    fontWeight: "700",
+    padding: "2px 6px",
+    borderRadius: "2px"
+  },
+  overlayLegendRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "18px",
+    marginTop: "12px",
+    paddingTop: "10px",
+    borderTop: "1px solid var(--border-light)"
+  },
+  legendItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "11px",
+    color: "var(--text-muted)"
+  },
+  legendDot: {
+    width: "7px",
+    height: "7px",
+    borderRadius: "50%"
+  },
+  metricsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    marginBottom: "16px"
+  },
+  metricRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: "8px",
+    borderBottom: "1px solid var(--border-light)"
+  },
+  metricValue: {
+    fontWeight: 600,
+    fontSize: "13px",
+    color: "var(--text-primary)"
+  },
+  recBox: {
+    backgroundColor: "#F7EDE9",
+    border: "1px solid rgba(160, 64, 34, 0.2)",
+    borderRadius: "6px",
+    padding: "12px"
+  },
+  recHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginBottom: "4px"
+  },
+  recText: {
+    fontSize: "12px",
+    color: "var(--text-primary)",
+    lineHeight: "1.4"
+  },
+  notesHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  editBtn: {
+    background: "none",
+    border: "none",
+    fontSize: "11px",
+    fontWeight: "600",
+    color: "var(--accent-primary)",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "4px"
+  },
+  metaActionBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "20px"
+  },
+  metaGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "24px",
+    fontSize: "12px"
+  },
+  actionGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px"
+  }
+};

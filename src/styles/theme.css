@@ -1,0 +1,266 @@
+/* ANCESTRA Design System Tokens & Styling */
+
+:root {
+  /* Colors */
+  --bg-main: #FAF8F5;
+  --bg-sidebar: #F4F0EA;
+  --bg-card: #FFFFFF;
+  --bg-card-alt: #F8F5EE;
+  --bg-header: #FAF8F5;
+  
+  --border-color: #E2DDD5;
+  --border-light: #EBE7DF;
+  --border-sidebar: #E3DDD3;
+  --border-active: #A04022;
+  
+  --text-primary: #1C1917;
+  --text-secondary: #57534E;
+  --text-muted: #8E857B;
+  
+  /* Primary Accent: Terracotta / Dark Brown */
+  --accent-primary: #A04022;
+  --accent-primary-hover: #883419;
+  --accent-primary-light: #F7EDE9;
+  
+  /* Secondary Accents */
+  --status-green: #16A34A;
+  --status-green-bg: #F0FDF4;
+  --status-green-border: #BBF7D0;
+  
+  --status-yellow: #D97706;
+  --status-yellow-bg: #FFFBEB;
+  --status-yellow-border: #FDE68A;
+  
+  --status-red: #DC2626;
+  --status-red-bg: #FEF2F2;
+  --status-red-border: #FCA5A5;
+  
+  --status-blue: #2563EB;
+  --status-blue-bg: #EFF6FF;
+  --status-blue-border: #BFDBFE;
+
+  --status-slate: #3B6978;
+  --status-slate-bg: #F0F7F9;
+
+  /* Typography */
+  --font-serif: 'Cinzel', 'Cormorant Garamond', Georgia, serif;
+  --font-editorial: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* Spacing & Layout */
+  --sidebar-width: 220px;
+  --header-height: 52px;
+  
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --shadow-sm: 0 1px 2px 0 rgba(28, 25, 23, 0.03);
+  --shadow-md: 0 4px 6px -1px rgba(28, 25, 23, 0.06);
+}
+
+/* Reset & Base */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  line-height: 1.5;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Architectural Paper Grid Background */
+.paper-grid {
+  background-color: var(--bg-main);
+  background-image: 
+    linear-gradient(to right, rgba(235, 231, 223, 0.6) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(235, 231, 223, 0.6) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Typography Helpers */
+.font-serif-heading {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.font-editorial {
+  font-family: var(--font-editorial);
+}
+
+.label-uppercase {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.label-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Pill / Module Badges */
+.module-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background-color: var(--accent-primary-light);
+  border: 1px solid rgba(160, 64, 34, 0.2);
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.04em;
+}
+
+.version-pill {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--accent-primary);
+  background-color: var(--accent-primary-light);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid rgba(160, 64, 34, 0.2);
+}
+
+/* Cards */
+.ancestra-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 18px;
+}
+
+/* Buttons */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: var(--accent-primary);
+  color: #FFFFFF;
+  border: 1px solid var(--accent-primary);
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  text-decoration: none;
+  font-family: var(--font-sans);
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-primary-hover);
+  border-color: var(--accent-primary-hover);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: #FFFFFF;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  font-family: var(--font-sans);
+}
+
+.btn-secondary:hover {
+  background-color: var(--bg-card-alt);
+  border-color: var(--text-muted);
+}
+
+.btn-outline-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--status-red-bg);
+  color: var(--status-red);
+  border: 1px solid var(--status-red-border);
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.btn-outline-danger:hover {
+  background-color: #FEE2E2;
+}
+
+/* Inputs & Form Controls */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.form-input, .form-select, .form-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background-color: #FFFFFF;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
