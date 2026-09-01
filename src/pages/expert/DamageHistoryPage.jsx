@@ -5,7 +5,7 @@ import { DamageChart } from "../../components/expert/DamageChart";
 import { DataTable } from "../../components/common/DataTable";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { EmergencyBadge } from "../../components/common/EmergencyBadge";
-import { TrendingUp, AlertCircle, Calendar, Eye } from "lucide-react";
+import { TrendingUp, AlertCircle, Eye } from "lucide-react";
 
 export function DamageHistoryPage() {
   const navigate = useNavigate();
@@ -76,12 +76,9 @@ export function DamageHistoryPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       {/* Header */}
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-          <span className="module-badge">HIS-06</span>
-          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: 0 }}>
-            STRUCTURAL DAMAGE TEMPORAL HISTORY
-          </h1>
-        </div>
+        <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
+          STRUCTURAL DAMAGE TEMPORAL HISTORY
+        </h1>
         <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
           Cross-temporal degradation metrics and predictive deterioration trends for architectural regions.
         </p>

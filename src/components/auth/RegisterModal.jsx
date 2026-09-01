@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Modal } from "../common/Modal";
 import { useApp } from "../../context/AppContext";
-import { Eye, EyeOff, UserPlus, CheckCircle } from "lucide-react";
+import { Eye, EyeOff, UserPlus } from "lucide-react";
 
 export function RegisterModal({ isOpen, onClose, onSuccess }) {
   const { registerUser } = useApp();
@@ -78,14 +78,15 @@ export function RegisterModal({ isOpen, onClose, onSuccess }) {
           />
         </div>
 
+        {/* Clean Password Fields with Eye Icon Standing Cleanly on Right (Zero Icon Overlap) */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
           <div className="form-group">
             <label className="form-label">PASSWORD *</label>
-            <div style={{ position: "relative" }}>
+            <div style={styles.inputWrapper}>
               <input
                 type={showPassword ? "text" : "password"}
                 className="form-input"
-                style={{ paddingRight: "32px" }}
+                style={{ paddingRight: "34px" }}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -94,6 +95,7 @@ export function RegisterModal({ isOpen, onClose, onSuccess }) {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 style={styles.eyeBtn}
+                title={showPassword ? "Hide Password" : "Show Password"}
               >
                 {showPassword ? <EyeOff size={14} color="#8E857B" /> : <Eye size={14} color="#8E857B" />}
               </button>
@@ -102,13 +104,24 @@ export function RegisterModal({ isOpen, onClose, onSuccess }) {
 
           <div className="form-group">
             <label className="form-label">CONFIRM PASSWORD *</label>
-            <input
-              type={showPassword ? "text" : "password"}
-              className="form-input"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-            />
+            <div style={styles.inputWrapper}>
+              <input
+                type={showPassword ? "text" : "password"}
+                className="form-input"
+                style={{ paddingRight: "34px" }}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={styles.eyeBtn}
+                title={showPassword ? "Hide Password" : "Show Password"}
+              >
+                {showPassword ? <EyeOff size={14} color="#8E857B" /> : <Eye size={14} color="#8E857B" />}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -158,14 +171,21 @@ const styles = {
     color: "#DC2626",
     fontSize: "11.5px"
   },
+  inputWrapper: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center"
+  },
   eyeBtn: {
     position: "absolute",
-    right: "8px",
+    right: "10px",
     top: "50%",
     transform: "translateY(-50%)",
     background: "none",
     border: "none",
     cursor: "pointer",
-    padding: 0
+    padding: 0,
+    display: "flex",
+    alignItems: "center"
   }
 };

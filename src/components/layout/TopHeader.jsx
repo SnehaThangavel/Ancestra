@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
-import { Clock, Plus, Landmark, Bell } from "lucide-react";
+import { SiteRequestModal } from "../expert/SiteRequestModal";
+import { Clock, Bell, Landmark, Settings } from "lucide-react";
 
 export function TopHeader() {
   const navigate = useNavigate();
-  const { heritageSites, activeSiteId, setActiveSiteId, currentUser, notifications } = useApp();
+  const { currentUser, notifications } = useApp();
   const [currentTime, setCurrentTime] = useState("");
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const isExpert = currentUser?.role === "CONSERVATION_EXPERT";
@@ -22,37 +24,16 @@ export function TopHeader() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleActionClick = () => {
-    if (isExpert) {
-      navigate("/expert/image-analysis");
-    } else {
-      navigate("/admin/heritage-sites");
-    }
-  };
-
   return (
     <header style={styles.headerContainer}>
       <div style={styles.headerMain}>
-        {/* Heritage Site Context Selector */}
-        <div style={styles.focusSelectorGroup}>
-          <Landmark size={14} color="#8E857B" />
-          <span style={styles.focusLabel}>FOCUS:</span>
-          <select
-            value={activeSiteId}
-            onChange={(e) => setActiveSiteId(e.target.value)}
-            style={styles.focusSelect}
-          >
-            {heritageSites.map((site) => (
-              <option key={site.id} value={site.id}>
-                {site.name.toUpperCase()}
-              </option>
-            ))}
-          </select>
+        {/* Left Side Branding Label */}
+        <div style={styles.headerLeftTitle}>
+          <span style={styles.headerBrandLabel}>ANCESTRA PLATFORM</span>
         </div>
 
-        {/* Header Right Tools */}
+        {/* Header Right Tools: Clock, Bell, Settings Button, and Expert Request Button */}
         <div style={styles.headerRightGroup}>
-          {/* Live System Clock */}
           <div style={styles.clockBox}>
             <Clock size={13} color="#8E857B" />
             <span style={styles.clockText}>{currentTime || "12:04:02 GMT+5:30"}</span>
@@ -68,13 +49,34 @@ export function TopHeader() {
             {unreadCount > 0 && <span style={styles.bellBadge}>{unreadCount}</span>}
           </button>
 
-          {/* Action Button */}
-          <button onClick={handleActionClick} className="btn-primary" style={{ padding: "6px 14px", height: "32px" }}>
-            <Plus size={14} />
-            <span>{isExpert ? "Upload Observation" : "Add Heritage Site"}</span>
+          {/* Change 2: Settings Button (Matching Bell Button Size & Style, Navigates to /profile) */}
+          <button
+            onClick={() => navigate("/profile")}
+            style={styles.settingsBtn}
+            title="User Profile & Account Settings"
+          >
+            <Settings size={15} color="#57534E" />
           </button>
+
+          {/* Heritage Site Request Option (Expert Side ONLY) */}
+          {isExpert && (
+            <button
+              onClick={() => setIsRequestModalOpen(true)}
+              className="btn-primary"
+              style={{ padding: "6px 14px", height: "32px", fontSize: "11.5px" }}
+            >
+              <Landmark size={14} />
+              <span>HERITAGE SITE REQUEST</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Expert Site Request Modal */}
+      <SiteRequestModal
+        isOpen={isRequestModalOpen}
+        onClose={() => setIsRequestModalOpen(false)}
+      />
     </header>
   );
 }
@@ -88,49 +90,34 @@ const styles = {
     borderBottom: "1px solid var(--border-color)"
   },
   headerMain: {
-    height: "var(--header-height)",
+    height: "56px", // Change 3: Slightly expanded vertical height for breathing space
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "0 20px"
+    padding: "0 22px"
   },
-  focusSelectorGroup: {
+  headerLeftTitle: {
     display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    backgroundColor: "#FFFFFF",
-    padding: "4px 10px",
-    border: "1px solid var(--border-color)",
-    borderRadius: "6px"
+    alignItems: "center"
   },
-  focusLabel: {
-    fontSize: "10px",
-    fontFamily: "var(--font-sans)",
+  headerBrandLabel: {
+    fontSize: "11px",
+    fontFamily: "var(--font-mono)",
     fontWeight: "700",
     letterSpacing: "0.08em",
     color: "#8E857B"
   },
-  focusSelect: {
-    border: "none",
-    background: "none",
-    fontFamily: "var(--font-serif)",
-    fontWeight: "700",
-    fontSize: "12px",
-    color: "var(--text-primary)",
-    cursor: "pointer",
-    outline: "none"
-  },
   headerRightGroup: {
     display: "flex",
     alignItems: "center",
-    gap: "14px"
+    gap: "10px"
   },
   clockBox: {
     display: "flex",
     alignItems: "center",
     gap: "6px",
     backgroundColor: "#FFFFFF",
-    padding: "5px 10px",
+    padding: "6px 12px",
     border: "1px solid var(--border-color)",
     borderRadius: "6px"
   },
@@ -149,7 +136,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    cursor: "pointer"
+    cursor: "pointer",
+    transition: "background-color 0.12s ease"
   },
   bellBadge: {
     position: "absolute",
@@ -161,5 +149,17 @@ const styles = {
     fontWeight: "700",
     borderRadius: "8px",
     padding: "1px 4px"
+  },
+  settingsBtn: {
+    background: "#FFFFFF",
+    border: "1px solid var(--border-color)",
+    borderRadius: "6px",
+    width: "32px",
+    height: "32px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    transition: "background-color 0.12s ease"
   }
 };

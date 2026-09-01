@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 import { ImageUploader } from "../../components/expert/ImageUploader";
 import { SectionCard } from "../../components/common/SectionCard";
-import { Camera, Info, Layers, Cpu, ArrowRight, AlertTriangle, XCircle } from "lucide-react";
+import { Cpu, ArrowRight, Info, XCircle } from "lucide-react";
 
 export function ImageAnalysisPage() {
   const navigate = useNavigate();
@@ -61,14 +61,11 @@ export function ImageAnalysisPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      {/* Header */}
+      {/* Header (No Module ID) */}
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-          <span className="module-badge">OBS-03</span>
-          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: 0 }}>
-            IMAGE ANALYSIS & OBSERVATION INTAKE
-          </h1>
-        </div>
+        <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
+          IMAGE ANALYSIS & OBSERVATION INTAKE
+        </h1>
         <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
           Upload high-resolution photographic documentation for AI lithic deterioration segmentation & structural damage estimation.
         </p>

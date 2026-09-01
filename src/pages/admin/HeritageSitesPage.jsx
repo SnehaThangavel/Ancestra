@@ -3,23 +3,28 @@ import { useApp } from "../../context/AppContext";
 import { DataTable } from "../../components/common/DataTable";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { SiteModal } from "../../components/admin/SiteModal";
+import { RequestReviewModal } from "../../components/admin/RequestReviewModal";
 import { Modal } from "../../components/common/Modal";
-import { Plus, Search, Edit3, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit3, Trash2, AlertTriangle, FileCheck, Eye } from "lucide-react";
 
 export function HeritageSitesPage() {
-  const { heritageSites, deleteHeritageSite, currentUser } = useApp();
+  const { heritageSites, siteRequests, deleteHeritageSite, currentUser } = useApp();
   const isAdmin = currentUser?.role === "ADMINISTRATOR";
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [siteToEdit, setSiteToEdit] = useState(null);
   const [siteToDelete, setSiteToDelete] = useState(null);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [prefillRequestData, setPrefillRequestData] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const pendingRequests = siteRequests.filter((r) => r.status === "PENDING ADMIN APPROVAL");
 
   const filteredSites = heritageSites.filter(
     (s) =>
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.structureType.toLowerCase().includes(searchQuery.toLowerCase())
+      (s.material && s.material.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const handleConfirmDelete = () => {
@@ -27,6 +32,19 @@ export function HeritageSitesPage() {
       deleteHeritageSite(siteToDelete.id);
       setSiteToDelete(null);
     }
+  };
+
+  const handleOpenAddWithPrefill = (reqData) => {
+    setPrefillRequestData({
+      name: reqData.siteName,
+      location: reqData.location,
+      circle: reqData.circle,
+      material: reqData.material,
+      category: reqData.category,
+      description: reqData.description,
+      image: reqData.image
+    });
+    setIsAddModalOpen(true);
   };
 
   const columns = [
@@ -44,10 +62,6 @@ export function HeritageSitesPage() {
           <div style={{ fontSize: "10.5px", color: "var(--text-muted)" }}>{row.location}</div>
         </div>
       )
-    },
-    {
-      header: "STRUCTURE TYPE",
-      accessor: "structureType"
     },
     {
       header: "MATERIAL",
@@ -71,7 +85,6 @@ export function HeritageSitesPage() {
     }
   ];
 
-  // Add Action column for Administrator ONLY
   if (isAdmin) {
     columns.push({
       header: "ACTIONS",
@@ -106,24 +119,52 @@ export function HeritageSitesPage() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-            <span className="module-badge">ADM-02</span>
-            <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: 0 }}>
-              HERITAGE SITE MANAGEMENT
-            </h1>
-          </div>
+          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
+            HERITAGE SITE MANAGEMENT
+          </h1>
           <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
             Register, configure, and maintain national protected heritage monument records.
           </p>
         </div>
 
         {isAdmin && (
-          <button onClick={() => setIsAddModalOpen(true)} className="btn-primary">
+          <button onClick={() => { setPrefillRequestData(null); setIsAddModalOpen(true); }} className="btn-primary">
             <Plus size={15} />
             <span>Add Heritage Site</span>
           </button>
         )}
       </div>
+
+      {/* Admin Pending Site Requests Banner */}
+      {isAdmin && pendingRequests.length > 0 && (
+        <div style={styles.requestAlertCard} className="ancestra-card">
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <FileCheck size={18} color="#A04022" />
+            <div>
+              <strong style={{ fontSize: "13px", color: "#1C1917" }}>
+                PENDING HERITAGE SITE REQUESTS ({pendingRequests.length})
+              </strong>
+              <div style={{ fontSize: "11.5px", color: "var(--text-secondary)", marginTop: "2px" }}>
+                Conservation Experts have submitted proposal requests requiring Administrator review and approval.
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {pendingRequests.map((req) => (
+              <button
+                key={req.id}
+                onClick={() => setSelectedRequest(req)}
+                className="btn-secondary"
+                style={{ padding: "5px 12px", fontSize: "11.5px", borderColor: "rgba(160, 64, 34, 0.4)" }}
+              >
+                <Eye size={12} color="#A04022" />
+                <span>Review Proposal: {req.siteName}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="ancestra-card" style={styles.filterCard}>
@@ -143,15 +184,28 @@ export function HeritageSitesPage() {
       {/* Sites Data Table */}
       <DataTable columns={columns} data={filteredSites} emptyMessage="No heritage sites found matching query." />
 
-      {/* Register Modal */}
-      <SiteModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} />
+      {/* Register / Edit Modal */}
+      <SiteModal
+        isOpen={isAddModalOpen}
+        onClose={() => { setIsAddModalOpen(false); setPrefillRequestData(null); }}
+        prefillData={prefillRequestData}
+      />
 
-      {/* Edit Modal */}
       {siteToEdit && (
         <SiteModal
           isOpen={Boolean(siteToEdit)}
           onClose={() => setSiteToEdit(null)}
           siteToEdit={siteToEdit}
+        />
+      )}
+
+      {/* Request Review Modal */}
+      {selectedRequest && (
+        <RequestReviewModal
+          isOpen={Boolean(selectedRequest)}
+          onClose={() => setSelectedRequest(null)}
+          request={selectedRequest}
+          onAddDetails={(reqData) => handleOpenAddWithPrefill(reqData)}
         />
       )}
 
@@ -194,6 +248,14 @@ export function HeritageSitesPage() {
 }
 
 const styles = {
+  requestAlertCard: {
+    backgroundColor: "#F7EDE9",
+    border: "1px solid rgba(160, 64, 34, 0.3)",
+    padding: "14px 18px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
   filterCard: {
     padding: "10px 14px"
   },

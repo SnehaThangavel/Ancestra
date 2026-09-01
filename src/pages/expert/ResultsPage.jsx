@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { EmergencyBadge } from "../../components/common/EmergencyBadge";
+import { generateAncestrapdfReport } from "../../utils/pdfGenerator";
 import {
   CheckCircle,
   Edit3,
@@ -10,23 +11,74 @@ import {
   FileText,
   TrendingUp,
   AlertTriangle,
-  Layers,
-  ShieldCheck,
   Eye,
-  Check
+  Check,
+  Lock,
+  ArrowRight
 } from "lucide-react";
 
 export function ResultsPage() {
   const navigate = useNavigate();
-  const { activeResult, updateAssessmentStatus, generateReportFromAssessment, currentUser } = useApp();
+  const {
+    activeResult,
+    updateAssessmentStatus,
+    generateReportFromAssessment,
+    heritageSites,
+    architecturalRegions,
+    currentUser,
+    isPipelineComplete,
+    showToast
+  } = useApp();
+
   const [showHighlightOverlay, setShowHighlightOverlay] = useState(true);
   const [notes, setNotes] = useState(activeResult?.expertNotes || "");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  const isExpert = currentUser?.role === "CONSERVATION_EXPERT";
+
+  // CHANGE 2: AI Results Page Access Control
+  // If pipeline is not complete, show clean centered empty state!
+  if (!isPipelineComplete) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div>
+          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
+            AI STRUCTURAL DAMAGE ASSESSMENT RESULT
+          </h1>
+          <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+            Published structural intelligence results and neural damage segmentation.
+          </p>
+        </div>
+
+        <div className="ancestra-card" style={styles.unpublishedCard}>
+          <div style={styles.lockIconBox}>
+            <Lock size={28} color="#A04022" />
+          </div>
+          <h2 className="font-serif-heading" style={{ fontSize: "18px", margin: "0 0 6px 0", color: "#1C1917" }}>
+            AI RESULTS HAVE NOT YET BEEN PUBLISHED
+          </h2>
+          <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "480px", margin: "0 0 20px 0", lineHeight: "1.4" }}>
+            Complete all AI perception pipeline steps to view the structural damage assessment.
+          </p>
+          <button
+            onClick={() => navigate("/expert/ai-analysis")}
+            className="btn-primary"
+            style={{ padding: "10px 18px", fontSize: "12px" }}
+          >
+            <span>Go to AI Perception Pipeline</span>
+            <ArrowRight size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const res = activeResult || {
     id: "ASM-2026-089",
     siteName: "Shore Temple, Mahabalipuram",
     regionName: "East-Facing Rajasimhesvara Vimana",
+    regionCode: "REG-001",
     date: new Date().toISOString().split("T")[0],
     damageType: "Structural Crack",
     severity: "High",
@@ -55,24 +107,34 @@ export function ResultsPage() {
     updateAssessmentStatus(res.id, "Rejected", notes);
   };
 
-  const handleGenerateReport = () => {
-    generateReportFromAssessment(res);
-    navigate("/reports");
-  };
+  // CHANGE 3: Generate Report Directly as PDF without redirecting to /reports!
+  const handleGenerateReportDirectPdf = async () => {
+    try {
+      setIsGeneratingPdf(true);
+      showToast("Generating and downloading PDF Report directly...");
 
-  const isExpert = currentUser.role === "CONSERVATION_EXPERT";
+      const newReport = generateReportFromAssessment(res);
+      const siteData = heritageSites.find((s) => s.name === res.siteName);
+      const regionData = architecturalRegions.find((r) => r.name === res.regionName);
+
+      await generateAncestrapdfReport(newReport, siteData, regionData, res);
+      showToast(`PDF Dossier ${newReport.id} downloaded successfully!`);
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to generate PDF.", "error");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-            <span className="module-badge">RES-05</span>
-            <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: 0 }}>
-              AI STRUCTURAL DAMAGE ASSESSMENT RESULT
-            </h1>
-          </div>
+          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
+            AI STRUCTURAL DAMAGE ASSESSMENT RESULT
+          </h1>
           <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
             Assessment Record ID: <strong>{res.id}</strong> • Target Region: <strong>{res.regionName}</strong>
           </p>
@@ -179,10 +241,7 @@ export function ResultsPage() {
             <div style={styles.notesHeader}>
               <span className="label-uppercase">EXPERT REVIEW NOTES</span>
               {!isEditingNotes && (
-                <button
-                  onClick={() => setIsEditingNotes(true)}
-                  style={styles.editBtn}
-                >
+                <button onClick={() => setIsEditingNotes(true)} style={styles.editBtn}>
                   <Edit3 size={12} />
                   <span>Edit</span>
                 </button>
@@ -215,7 +274,7 @@ export function ResultsPage() {
         </div>
       </div>
 
-      {/* Assessment Metadata & Expert Action Bar */}
+      {/* Assessment Metadata & Expert Action Bar (No Model Version) */}
       <div className="ancestra-card" style={styles.metaActionBar}>
         <div style={styles.metaGroup}>
           <div>
@@ -227,12 +286,14 @@ export function ResultsPage() {
             <div style={{ fontWeight: 600 }}>{res.regionName}</div>
           </div>
           <div>
-            <span className="label-uppercase">ASSESSMENT DATE:</span>
-            <div style={{ fontFamily: "var(--font-mono)" }}>{res.date}</div>
+            <span className="label-uppercase">REGION ID:</span>
+            <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--accent-primary)" }}>
+              {res.regionCode || "REG-001"}
+            </div>
           </div>
           <div>
-            <span className="label-uppercase">MODEL VERSION:</span>
-            <div style={{ fontFamily: "var(--font-mono)" }}>ANCESTRA CV v0.1</div>
+            <span className="label-uppercase">ASSESSMENT DATE:</span>
+            <div style={{ fontFamily: "var(--font-mono)" }}>{res.date}</div>
           </div>
         </div>
 
@@ -254,9 +315,14 @@ export function ResultsPage() {
               <span>Reject</span>
             </button>
 
-            <button onClick={handleGenerateReport} className="btn-primary">
+            {/* Direct PDF Download Button */}
+            <button
+              onClick={handleGenerateReportDirectPdf}
+              className="btn-primary"
+              disabled={isGeneratingPdf}
+            >
               <FileText size={14} />
-              <span>Generate Report</span>
+              <span>{isGeneratingPdf ? "Generating PDF..." : "Generate Report"}</span>
             </button>
 
             <button onClick={() => navigate("/expert/damage-history")} className="btn-secondary">
@@ -271,6 +337,25 @@ export function ResultsPage() {
 }
 
 const styles = {
+  unpublishedCard: {
+    padding: "48px 24px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    backgroundColor: "#FAF8F5"
+  },
+  lockIconBox: {
+    width: "56px",
+    height: "56px",
+    borderRadius: "50%",
+    backgroundColor: "#F7EDE9",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: "16px"
+  },
   imageCardHeader: {
     display: "flex",
     alignItems: "center",

@@ -1,141 +1,261 @@
 import React from "react";
-import { CheckCircle2, Loader2, Circle } from "lucide-react";
+import { CheckCircle2, Circle, ArrowRight, RotateCcw, Play } from "lucide-react";
+import { useApp } from "../../context/AppContext";
 
-export function AIProgress({ activeStep = 1, totalSteps = 9 }) {
+export function AIProgress({ onCompleteResults }) {
+  const {
+    pipelineStep,
+    isPipelineComplete,
+    advancePipelineStep,
+    completeAllPipelineSteps,
+    resetPipeline
+  } = useApp();
+
   const steps = [
-    { num: "01", label: "IMAGE RECEIVED", desc: "Photometric calibration & metadata verify" },
-    { num: "02", label: "IMAGE QUALITY CHECK", desc: "Resolution & sensor noise validation" },
-    { num: "03", label: "IMAGE PREPROCESSING", desc: "Color-checker normalization & edge filter" },
-    { num: "04", label: "STRUCTURAL FEATURE EXTRACTION", desc: "Spatial coordinate anchoring & 3D mesh query" },
-    { num: "05", label: "DAMAGE DETECTION", desc: "Lithic damage segmentation (cracks, spalling, efflorescence)" },
-    { num: "06", label: "SEVERITY ESTIMATION", desc: "Fracture depth & surface area stress index" },
-    { num: "07", label: "DAMAGE TREND ANALYSIS", desc: "Cross-temporal consensus weight calculation" },
-    { num: "08", label: "EMERGENCY LEVEL COMPUTATION", desc: "ICOMOS heritage risk matrix evaluation" },
-    { num: "09", label: "ANALYSIS COMPLETE", desc: "Structural assessment record generated" }
+    { num: "01", name: "Photometric Calibration", desc: "Color-checker normalization & sensor noise floor correction" },
+    { num: "02", name: "Spatial Polygon Anchoring", desc: "Aligning raw pixels with architectural region spatial polygon" },
+    { num: "03", name: "Contrast & Noise Normalization", desc: "Shadow suppression & surface ambient lighting equalization" },
+    { num: "04", name: "Lithic Texture Extraction", desc: "Granite/Sandstone grain texture segmentation & edge mapping" },
+    { num: "05", name: "Crack Segmentation Masking", desc: "Convolutional neural mask output for primary shear fractures" },
+    { num: "06", name: "Salt Efflorescence Estimation", desc: "White crust sodium chloride crystalline deposition detection" },
+    { num: "07", name: "Severity & Risk Scoring", desc: "Computing structural load impairment percentage and threat level" },
+    { num: "08", name: "Temporal Consensus Matrix", desc: "Weighting current observation against historical degradation log" },
+    { num: "09", name: "Conservation Recommendation", desc: "Formulating automated emergency intervention protocol" }
   ];
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <span className="label-uppercase">AI PERCEPTION PIPELINE</span>
-        <span style={styles.stepCounter}>STEP {activeStep} OF {totalSteps}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* Title Bar */}
+      <div style={styles.headerRow}>
+        <div>
+          <h3 className="font-serif-heading" style={{ fontSize: "15px", margin: 0 }}>
+            NEURAL PERCEPTION PIPELINE STEPS
+          </h3>
+          <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "2px" }}>
+            Step {pipelineStep} of 9 • {isPipelineComplete ? "Analysis Complete (Published)" : "Processing"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {isPipelineComplete ? (
+            <span style={styles.completeBadge}>✓ PUBLISHED</span>
+          ) : (
+            <span className="version-pill">STEP {pipelineStep}/9</span>
+          )}
+        </div>
       </div>
 
-      <div style={styles.stepList}>
-        {steps.map((step, idx) => {
+      {/* Static 9 Steps List */}
+      <div style={styles.stepsList}>
+        {steps.map((stepItem, idx) => {
           const stepNum = idx + 1;
-          const isDone = stepNum < activeStep;
-          const isCurrent = stepNum === activeStep;
+          const isDone = stepNum < pipelineStep || (stepNum === 9 && isPipelineComplete);
+          const isCurrent = stepNum === pipelineStep && !isPipelineComplete;
+          const isPending = stepNum > pipelineStep;
 
           return (
             <div
-              key={idx}
+              key={stepItem.num}
               style={{
-                ...styles.stepRow,
-                ...(isCurrent ? styles.stepRowCurrent : {}),
-                ...(isDone ? styles.stepRowDone : {})
+                ...styles.stepCard,
+                ...(isDone ? styles.stepDone : {}),
+                ...(isCurrent ? styles.stepCurrent : {}),
+                ...(isPending ? styles.stepPending : {})
               }}
             >
-              <div style={styles.iconBox}>
+              <div style={styles.iconCol}>
                 {isDone ? (
-                  <CheckCircle2 size={16} color="#16A34A" />
+                  <div style={styles.doneCheckCircle}>
+                    <CheckCircle2 size={16} color="#16A34A" />
+                  </div>
                 ) : isCurrent ? (
-                  <Loader2 size={16} color="#A04022" style={styles.spinner} />
+                  <div style={styles.currentActiveDot}>
+                    <span style={styles.activePulseDot} />
+                  </div>
                 ) : (
-                  <Circle size={16} color="#D6D3D1" />
+                  <Circle size={14} color="#A8A29E" />
                 )}
               </div>
 
               <div style={{ flex: 1 }}>
-                <div style={styles.stepLabelRow}>
-                  <span style={styles.stepNum}>{step.num}.</span>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <span
                     style={{
-                      ...styles.stepLabel,
-                      color: isDone ? "#16A34A" : isCurrent ? "#A04022" : "#8E857B",
-                      fontWeight: isCurrent ? 700 : 600
+                      ...styles.stepName,
+                      color: isDone ? "#16A34A" : isCurrent ? "#A04022" : "#57534E",
+                      fontWeight: isCurrent || isDone ? 700 : 500
                     }}
                   >
-                    {step.label}
+                    {stepItem.num}. {stepItem.name}
                   </span>
+
+                  {isDone && <span style={styles.doneLabel}>VERIFIED</span>}
+                  {isCurrent && <span style={styles.currentLabel}>IN PROGRESS</span>}
+                  {isPending && <span style={styles.pendingLabel}>INACTIVE</span>}
                 </div>
-                <div style={styles.stepDesc}>{step.desc}</div>
+
+                <div style={{ fontSize: "11px", color: isDone ? "#15803D" : "var(--text-secondary)", marginTop: "2px" }}>
+                  {stepItem.desc}
+                </div>
               </div>
             </div>
           );
         })}
+      </div>
+
+      {/* Manual Step Advancement Controls */}
+      <div style={styles.controlsBar}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <button
+            type="button"
+            onClick={resetPipeline}
+            className="btn-secondary"
+            style={{ padding: "6px 10px", fontSize: "11px" }}
+            title="Reset to Step 1"
+          >
+            <RotateCcw size={12} />
+            <span>Reset</span>
+          </button>
+
+          {!isPipelineComplete && (
+            <button
+              type="button"
+              onClick={advancePipelineStep}
+              className="btn-secondary"
+              style={{ padding: "6px 12px", fontSize: "11px", borderColor: "rgba(160, 64, 34, 0.4)" }}
+            >
+              <Play size={12} color="#A04022" />
+              <span>Advance Step ({pipelineStep}/9)</span>
+            </button>
+          )}
+        </div>
+
+        <div>
+          {!isPipelineComplete ? (
+            <button
+              type="button"
+              onClick={completeAllPipelineSteps}
+              className="btn-primary"
+              style={{ padding: "6px 14px", fontSize: "11.5px" }}
+            >
+              <span>Process All 9 Steps</span>
+              <ArrowRight size={13} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onCompleteResults}
+              className="btn-primary"
+              style={{ padding: "6px 16px", fontSize: "11.5px", backgroundColor: "#16A34A", borderColor: "#16A34A" }}
+            >
+              <span>View Published AI Results</span>
+              <ArrowRight size={13} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 const styles = {
-  container: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px"
-  },
-  header: {
+  headerRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: "8px",
+    paddingBottom: "10px",
     borderBottom: "1px solid var(--border-light)"
   },
-  stepCounter: {
+  completeBadge: {
+    backgroundColor: "#F0FDF4",
+    color: "#16A34A",
+    border: "1px solid #BBF7D0",
+    borderRadius: "4px",
+    padding: "2px 8px",
+    fontSize: "10px",
     fontFamily: "var(--font-mono)",
-    fontSize: "11px",
-    fontWeight: "700",
-    color: "var(--accent-primary)"
+    fontWeight: "700"
   },
-  stepList: {
+  stepsList: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px"
+    gap: "6px"
   },
-  stepRow: {
+  stepCard: {
     display: "flex",
     alignItems: "flex-start",
     gap: "10px",
     padding: "8px 10px",
     borderRadius: "4px",
-    border: "1px solid transparent",
-    transition: "all 0.15s ease"
+    border: "1px solid var(--border-light)",
+    backgroundColor: "#FAF8F5",
+    transition: "all 0.12s ease"
   },
-  stepRowDone: {
+  stepDone: {
     backgroundColor: "#F0FDF4",
     borderColor: "#DCFCE7"
   },
-  stepRowCurrent: {
-    backgroundColor: "var(--accent-primary-light)",
-    borderColor: "rgba(160, 64, 34, 0.3)"
+  stepCurrent: {
+    backgroundColor: "#F7EDE9",
+    borderColor: "rgba(160, 64, 34, 0.4)",
+    boxShadow: "0 0 0 1px rgba(160, 64, 34, 0.15)"
   },
-  iconBox: {
+  stepPending: {
+    backgroundColor: "#FAF8F5",
+    opacity: 0.75
+  },
+  iconCol: {
     marginTop: "2px",
     flexShrink: 0
   },
-  stepLabelRow: {
+  doneCheckCircle: {
     display: "flex",
     alignItems: "center",
-    gap: "6px"
+    justifyContent: "center"
   },
-  stepNum: {
+  currentActiveDot: {
+    width: "14px",
+    height: "14px",
+    borderRadius: "50%",
+    backgroundColor: "var(--accent-primary-light)",
+    border: "2px solid var(--accent-primary)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  activePulseDot: {
+    width: "4px",
+    height: "4px",
+    borderRadius: "50%",
+    backgroundColor: "var(--accent-primary)"
+  },
+  stepName: {
+    fontSize: "12px",
+    fontFamily: "var(--font-sans)"
+  },
+  doneLabel: {
+    fontSize: "9px",
     fontFamily: "var(--font-mono)",
-    fontSize: "11px",
     fontWeight: "700",
-    color: "#78716C"
+    color: "#16A34A"
   },
-  stepLabel: {
-    fontSize: "11px",
-    fontFamily: "var(--font-sans)",
-    letterSpacing: "0.04em"
+  currentLabel: {
+    fontSize: "9px",
+    fontFamily: "var(--font-mono)",
+    fontWeight: "700",
+    color: "#A04022"
   },
-  stepDesc: {
-    fontSize: "10.5px",
-    color: "var(--text-muted)",
-    marginTop: "1px"
+  pendingLabel: {
+    fontSize: "9px",
+    fontFamily: "var(--font-mono)",
+    fontWeight: "600",
+    color: "#A8A29E"
   },
-  spinner: {
-    animation: "spin 1s linear infinite"
+  controlsBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: "10px",
+    borderTop: "1px solid var(--border-light)"
   }
 };

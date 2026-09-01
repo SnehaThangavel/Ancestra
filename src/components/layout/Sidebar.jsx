@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
-import { EngineStatusModal } from "../admin/EngineStatusModal";
 import { Modal } from "../common/Modal";
 import {
   LayoutDashboard,
@@ -15,43 +14,46 @@ import {
   Bell,
   UserCheck,
   Building2,
-  LogOut,
-  Edit3
+  LogOut
 } from "lucide-react";
 
 export function Sidebar() {
   const navigate = useNavigate();
-  const { currentUser, logout, notifications, aiEngineStatus } = useApp();
+  const { currentUser, logout, notifications } = useApp();
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [isEngineModalOpen, setIsEngineModalOpen] = useState(false);
 
   const isExpert = currentUser?.role === "CONSERVATION_EXPERT";
   const isAdmin = currentUser?.role === "ADMINISTRATOR";
 
-  const handleConfirmLogout = () => {
+  const handleConfirmLogout = (e) => {
+    e.stopPropagation();
     setIsLogoutModalOpen(false);
     logout();
     navigate("/login");
   };
 
+  const handleProfileClick = () => {
+    navigate("/profile");
+  };
+
   const expertNavItems = [
-    { label: "Overview", num: "01", icon: LayoutDashboard, path: "/dashboard" },
-    { label: "Image Analysis", num: "03", icon: Camera, path: "/expert/image-analysis" },
-    { label: "AI Perception", num: "04", icon: Cpu, path: "/expert/ai-analysis" },
-    { label: "AI Results", num: "05", icon: CheckCircle2, path: "/expert/results" },
-    { label: "Damage History", num: "06", icon: TrendingUp, path: "/expert/damage-history" },
-    { label: "Reports", num: "07", icon: FileText, path: "/reports" },
-    { label: "Notifications", num: "08", icon: Bell, path: "/notifications", badge: unreadCount > 0 ? unreadCount : null }
+    { label: "Overview", icon: LayoutDashboard, path: "/dashboard" },
+    { label: "Image Analysis", icon: Camera, path: "/expert/image-analysis" },
+    { label: "AI Perception", icon: Cpu, path: "/expert/ai-analysis" },
+    { label: "AI Results", icon: CheckCircle2, path: "/expert/results" },
+    { label: "Damage History", icon: TrendingUp, path: "/expert/damage-history" },
+    { label: "Reports", icon: FileText, path: "/reports" },
+    { label: "Notifications", icon: Bell, path: "/notifications", badge: unreadCount > 0 ? unreadCount : null }
   ];
 
   const adminNavItems = [
-    { label: "Overview", num: "01", icon: LayoutDashboard, path: "/dashboard" },
-    { label: "Heritage Sites", num: "02", icon: Landmark, path: "/admin/heritage-sites" },
-    { label: "Architectural Regions", num: "03", icon: Layers, path: "/admin/architectural-regions" },
-    { label: "Reports", num: "04", icon: FileText, path: "/reports" },
-    { label: "Notifications", num: "05", icon: Bell, path: "/notifications", badge: unreadCount > 0 ? unreadCount : null }
+    { label: "Overview", icon: LayoutDashboard, path: "/dashboard" },
+    { label: "Heritage Sites", icon: Landmark, path: "/admin/heritage-sites" },
+    { label: "Architectural Regions", icon: Layers, path: "/admin/architectural-regions" },
+    { label: "Reports", icon: FileText, path: "/reports" },
+    { label: "Notifications", icon: Bell, path: "/notifications", badge: unreadCount > 0 ? unreadCount : null }
   ];
 
   const navItems = isExpert ? expertNavItems : adminNavItems;
@@ -67,7 +69,6 @@ export function Sidebar() {
           <div>
             <div style={styles.logoTitleRow}>
               <span style={styles.brandName}>ANCESTRA</span>
-              <span className="version-pill">v0.1</span>
             </div>
             <div style={styles.brandSubtitle}>STRUCTURAL INTELLIGENCE</div>
           </div>
@@ -96,10 +97,8 @@ export function Sidebar() {
                     <span style={{ ...styles.navLabel, color: isActive ? "#1C1917" : "#57534E", fontWeight: isActive ? 600 : 500 }}>
                       {item.label}
                     </span>
-                    {item.badge ? (
+                    {item.badge && (
                       <span style={styles.navBadge}>{item.badge}</span>
-                    ) : (
-                      <span style={styles.navNum}>{item.num}</span>
                     )}
                   </>
                 )}
@@ -109,45 +108,12 @@ export function Sidebar() {
         </nav>
       </div>
 
-      {/* System Status Card with Administrator-Only Edit Icon */}
-      <div style={styles.statusCard}>
-        <div style={styles.statusHeader}>
-          <span>AI ASSESSMENT ENGINE</span>
-          {isAdmin && (
-            <button
-              onClick={() => setIsEngineModalOpen(true)}
-              style={styles.editEngineBtn}
-              title="Edit AI Engine Status (Admin Only)"
-            >
-              <Edit3 size={11} color="#A04022" />
-              <span>EDIT</span>
-            </button>
-          )}
-        </div>
-        <div style={styles.onlineRow}>
-          <span
-            style={{
-              ...styles.onlineDot,
-              backgroundColor: aiEngineStatus.online ? "var(--status-green)" : "#DC2626"
-            }}
-          />
-          <span
-            style={{
-              ...styles.onlineText,
-              color: aiEngineStatus.online ? "var(--status-green)" : "#DC2626"
-            }}
-          >
-            {aiEngineStatus.online ? "ONLINE" : "OFFLINE"}
-          </span>
-        </div>
-        <div style={styles.modelStateRow}>
-          <span style={styles.modelLabel}>MODEL STATE:</span>
-          <span style={styles.modelValue}>{aiEngineStatus.modelState}</span>
-        </div>
-      </div>
-
-      {/* User Profile Footer with Log Out Button for BOTH Users */}
-      <div style={styles.profileSection}>
+      {/* User Profile Footer (Change 1: Entire Profile Card is Clickable -> Navigates to /profile) */}
+      <div
+        onClick={handleProfileClick}
+        style={styles.profileSection}
+        title="View & Edit Account Settings"
+      >
         <div style={styles.profileInfo}>
           <div style={styles.avatarCircle}>
             <UserCheck size={14} color="#A04022" />
@@ -163,7 +129,7 @@ export function Sidebar() {
             {isExpert ? "CONSERVATION EXPERT" : "ADMINISTRATOR"}
           </span>
           <button
-            onClick={() => setIsLogoutModalOpen(true)}
+            onClick={handleConfirmLogout}
             className="btn-secondary"
             style={styles.logoutBtn}
             title="Log out of session"
@@ -195,14 +161,6 @@ export function Sidebar() {
           </div>
         </div>
       </Modal>
-
-      {/* Engine Status Modal for Admin */}
-      {isAdmin && (
-        <EngineStatusModal
-          isOpen={isEngineModalOpen}
-          onClose={() => setIsEngineModalOpen(false)}
-        />
-      )}
     </aside>
   );
 }
@@ -308,11 +266,6 @@ const styles = {
     overflow: "hidden",
     textOverflow: "ellipsis"
   },
-  navNum: {
-    fontFamily: "var(--font-mono)",
-    fontSize: "10px",
-    color: "#A0988E"
-  },
   navBadge: {
     backgroundColor: "var(--accent-primary)",
     color: "#FFFFFF",
@@ -321,71 +274,12 @@ const styles = {
     borderRadius: "8px",
     padding: "1px 6px"
   },
-  statusCard: {
-    margin: "12px 12px 10px 12px",
-    padding: "10px 12px",
-    backgroundColor: "#FAF7F2",
-    border: "1px solid var(--border-color)",
-    borderRadius: "6px"
-  },
-  statusHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: "10px",
-    fontFamily: "var(--font-sans)",
-    fontWeight: "700",
-    letterSpacing: "0.07em",
-    color: "var(--text-muted)",
-    marginBottom: "4px"
-  },
-  editEngineBtn: {
-    background: "none",
-    border: "none",
-    color: "var(--accent-primary)",
-    fontSize: "9px",
-    fontFamily: "var(--font-mono)",
-    fontWeight: "700",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: "3px",
-    padding: 0
-  },
-  onlineRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    marginBottom: "4px"
-  },
-  onlineDot: {
-    width: "7px",
-    height: "7px",
-    borderRadius: "50%"
-  },
-  onlineText: {
-    fontSize: "11px",
-    fontFamily: "var(--font-mono)",
-    fontWeight: "700"
-  },
-  modelStateRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    fontSize: "10px"
-  },
-  modelLabel: {
-    color: "var(--text-muted)"
-  },
-  modelValue: {
-    fontFamily: "var(--font-mono)",
-    fontWeight: "600",
-    color: "var(--text-primary)"
-  },
   profileSection: {
     padding: "12px",
     borderTop: "1px solid var(--border-light)",
-    backgroundColor: "#F4F0EA"
+    backgroundColor: "#F4F0EA",
+    cursor: "pointer",
+    transition: "background-color 0.12s ease"
   },
   profileInfo: {
     display: "flex",

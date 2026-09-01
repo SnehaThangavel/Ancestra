@@ -11,6 +11,7 @@ export function LoginPage() {
   const [emailOrPhone, setEmailOrPhone] = useState("a.sharma@asi.gov.in");
   const [password, setPassword] = useState("password123");
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedRolePreset, setSelectedRolePreset] = useState("EXPERT"); // "EXPERT" or "ADMIN"
 
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
@@ -35,9 +36,15 @@ export function LoginPage() {
     setSuccessMsg("Account created successfully. Please sign in with your credentials.");
   };
 
-  const setDemoAccount = (email, pass) => {
-    setEmailOrPhone(email);
-    setPassword(pass);
+  const handleRoleSelect = (roleType) => {
+    setSelectedRolePreset(roleType);
+    if (roleType === "EXPERT") {
+      setEmailOrPhone("a.sharma@asi.gov.in");
+      setPassword("password123");
+    } else {
+      setEmailOrPhone("s.ranganathan@ancestra.org");
+      setPassword("password123");
+    }
     setErrorMsg("");
   };
 
@@ -54,7 +61,6 @@ export function LoginPage() {
               <span className="font-serif-heading" style={{ fontSize: "21px", letterSpacing: "0.06em" }}>
                 ANCESTRA
               </span>
-              <span className="version-pill">v0.1</span>
             </div>
             <div style={styles.brandSub}>STRUCTURAL INTELLIGENCE</div>
           </div>
@@ -139,26 +145,38 @@ export function LoginPage() {
           </button>
         </form>
 
-        {/* Quick Demo Pre-fill Links for Testing */}
-        <div style={styles.demoAccountsRow}>
-          <span style={{ fontSize: "10px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-            DEMO PRESETS:
-          </span>
-          <button
-            type="button"
-            onClick={() => setDemoAccount("a.sharma@asi.gov.in", "password123")}
-            style={styles.demoBtn}
-          >
-            EXPERT
-          </button>
-          <span style={{ color: "var(--border-color)" }}>|</span>
-          <button
-            type="button"
-            onClick={() => setDemoAccount("s.ranganathan@ancestra.org", "password123")}
-            style={styles.demoBtn}
-          >
-            ADMIN
-          </button>
+        {/* Change 3: YOUR ROLE (Visually Highlighted Active Preset) */}
+        <div style={styles.roleSelectionRow}>
+          <span style={styles.yourRoleLabel}>YOUR ROLE:</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <button
+              type="button"
+              onClick={() => handleRoleSelect("EXPERT")}
+              style={{
+                ...styles.roleTabBtn,
+                color: selectedRolePreset === "EXPERT" ? "var(--accent-primary)" : "#8E857B",
+                fontWeight: selectedRolePreset === "EXPERT" ? "700" : "500",
+                borderBottom: selectedRolePreset === "EXPERT" ? "2px solid var(--accent-primary)" : "2px solid transparent",
+                backgroundColor: selectedRolePreset === "EXPERT" ? "#F7EDE9" : "transparent"
+              }}
+            >
+              EXPERT
+            </button>
+            <span style={{ color: "var(--border-color)", fontSize: "11px" }}>|</span>
+            <button
+              type="button"
+              onClick={() => handleRoleSelect("ADMIN")}
+              style={{
+                ...styles.roleTabBtn,
+                color: selectedRolePreset === "ADMIN" ? "var(--accent-primary)" : "#8E857B",
+                fontWeight: selectedRolePreset === "ADMIN" ? "700" : "500",
+                borderBottom: selectedRolePreset === "ADMIN" ? "2px solid var(--accent-primary)" : "2px solid transparent",
+                backgroundColor: selectedRolePreset === "ADMIN" ? "#F7EDE9" : "transparent"
+              }}
+            >
+              ADMIN
+            </button>
+          </div>
         </div>
 
         {/* Registration Footer */}
@@ -266,11 +284,15 @@ const styles = {
   inputIcon: {
     position: "absolute",
     left: "10px",
+    top: "50%",
+    transform: "translateY(-50%)",
     pointerEvents: "none"
   },
   eyeBtn: {
     position: "absolute",
     right: "10px",
+    top: "50%",
+    transform: "translateY(-50%)",
     background: "none",
     border: "none",
     cursor: "pointer",
@@ -291,25 +313,33 @@ const styles = {
     letterSpacing: "0.04em",
     fontFamily: "var(--font-mono)"
   },
-  demoAccountsRow: {
-    marginTop: "12px",
+  roleSelectionRow: {
+    marginTop: "16px",
+    paddingTop: "12px",
+    borderTop: "1px solid var(--border-light)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "8px"
+    gap: "10px"
   },
-  demoBtn: {
-    background: "none",
-    border: "none",
-    color: "var(--accent-primary)",
-    fontSize: "10px",
+  yourRoleLabel: {
+    fontSize: "10.5px",
     fontFamily: "var(--font-mono)",
     fontWeight: "700",
+    color: "#8E857B",
+    letterSpacing: "0.06em"
+  },
+  roleTabBtn: {
+    border: "none",
+    padding: "3px 8px",
+    borderRadius: "3px",
+    fontSize: "10.5px",
+    fontFamily: "var(--font-mono)",
     cursor: "pointer",
-    padding: "2px 4px"
+    transition: "all 0.12s ease"
   },
   registerFooter: {
-    marginTop: "20px",
+    marginTop: "16px",
     paddingTop: "14px",
     borderTop: "1px dashed var(--border-color)",
     display: "flex",

@@ -1,61 +1,38 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useApp } from "../../context/AppContext";
 import { Modal } from "../common/Modal";
 import { ImageUploaderInput } from "../common/ImageUploaderInput";
 
-export function SiteModal({ isOpen, onClose, siteToEdit = null, prefillData = null }) {
-  const { addHeritageSite, updateHeritageSite } = useApp();
-
-  const isEditing = Boolean(siteToEdit);
-  const initialData = siteToEdit || prefillData;
+export function SiteRequestModal({ isOpen, onClose }) {
+  const { submitSiteRequest } = useApp();
 
   const [formData, setFormData] = useState({
     name: "",
     location: "",
     circle: "ASI Chennai Circle",
-    material: "Granite & Freestone Blockwork",
-    category: "UNESCO World Heritage Site",
+    material: "Sandstone & Mortar",
+    category: "State Protected Structural Site",
     description: "",
-    image: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
-    status: "CRITICAL"
+    image: ""
   });
-
-  useEffect(() => {
-    if (initialData) {
-      setFormData({
-        name: initialData.name || "",
-        location: initialData.location || "",
-        circle: initialData.circle || "ASI Chennai Circle",
-        material: initialData.material || "Granite & Freestone Blockwork",
-        category: initialData.category || "UNESCO World Heritage Site",
-        description: initialData.description || "",
-        image: initialData.image || "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
-        status: initialData.status || "CRITICAL"
-      });
-    } else {
-      setFormData({
-        name: "",
-        location: "",
-        circle: "ASI Chennai Circle",
-        material: "Granite & Freestone Blockwork",
-        category: "UNESCO World Heritage Site",
-        description: "",
-        image: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
-        status: "CRITICAL"
-      });
-    }
-  }, [initialData, isOpen]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.name || !formData.location) return;
-
-    if (isEditing) {
-      updateHeritageSite(siteToEdit.id, formData);
-    } else {
-      addHeritageSite(formData);
+    if (!formData.name || !formData.location || !formData.image) {
+      alert("Please enter site name, location, and upload a photograph.");
+      return;
     }
 
+    submitSiteRequest(formData);
+    setFormData({
+      name: "",
+      location: "",
+      circle: "ASI Chennai Circle",
+      material: "Sandstone & Mortar",
+      category: "State Protected Structural Site",
+      description: "",
+      image: ""
+    });
     onClose();
   };
 
@@ -63,16 +40,20 @@ export function SiteModal({ isOpen, onClose, siteToEdit = null, prefillData = nu
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isEditing ? "EDIT HERITAGE MONUMENT SITE" : "REGISTER NEW HERITAGE MONUMENT SITE"}
+      title="SUBMIT NEW HERITAGE SITE REQUEST"
       width="580px"
     >
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "4px" }}>
+          Submit a proposal for a new heritage monument site to be registered into the ANCESTRA structural monitoring platform. Subject to Administrator review.
+        </div>
+
         <div className="form-group">
           <label className="form-label">HERITAGE SITE NAME *</label>
           <input
             type="text"
             className="form-input"
-            placeholder="e.g. Shore Temple, Mahabalipuram"
+            placeholder="e.g. Kailasanathar Temple, Kanchipuram"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             required
@@ -85,7 +66,7 @@ export function SiteModal({ isOpen, onClose, siteToEdit = null, prefillData = nu
             <input
               type="text"
               className="form-input"
-              placeholder="e.g. Mahabalipuram, Tamil Nadu"
+              placeholder="e.g. Kanchipuram, Tamil Nadu"
               value={formData.location}
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               required
@@ -114,7 +95,7 @@ export function SiteModal({ isOpen, onClose, siteToEdit = null, prefillData = nu
             <input
               type="text"
               className="form-input"
-              placeholder="e.g. Cut Granite Blocks & Mortar"
+              placeholder="e.g. Sandstone, Granite, Mortar"
               value={formData.material}
               onChange={(e) => setFormData({ ...formData, material: e.target.value })}
             />
@@ -127,14 +108,14 @@ export function SiteModal({ isOpen, onClose, siteToEdit = null, prefillData = nu
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
             >
-              <option value="UNESCO World Heritage Site">UNESCO World Heritage Site</option>
-              <option value="National Monument of Importance">National Monument of Importance</option>
               <option value="State Protected Structural Site">State Protected Structural Site</option>
+              <option value="National Monument of Importance">National Monument of Importance</option>
+              <option value="UNESCO World Heritage Site">UNESCO World Heritage Site</option>
             </select>
           </div>
         </div>
 
-        {/* Drag & Drop File Picker Image Component */}
+        {/* Drag & Drop File Upload Component */}
         <ImageUploaderInput
           value={formData.image}
           onChange={(imgData) => setFormData({ ...formData, image: imgData })}
@@ -146,7 +127,7 @@ export function SiteModal({ isOpen, onClose, siteToEdit = null, prefillData = nu
           <textarea
             className="form-textarea"
             rows="3"
-            placeholder="Brief architectural notes, structural layout, load bearing systems..."
+            placeholder="Brief architectural layout, key structural vulnerabilities..."
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
           />
@@ -157,7 +138,7 @@ export function SiteModal({ isOpen, onClose, siteToEdit = null, prefillData = nu
             Cancel
           </button>
           <button type="submit" className="btn-primary">
-            {isEditing ? "Save Changes" : "Register Site"}
+            Submit Site Request
           </button>
         </div>
       </form>

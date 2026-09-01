@@ -3,15 +3,46 @@ import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
 import { StatCard } from "../components/common/StatCard";
 import { StatusBadge } from "../components/common/StatusBadge";
-import { Landmark, Scan, Binary, ShieldAlert, ArrowRight, Camera, Plus, CheckCircle2, Clock } from "lucide-react";
+import { Landmark, Scan, Activity, ArrowRight, Cpu, Play } from "lucide-react";
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const { heritageSites, assessments, notifications, currentUser, setActiveSiteId } = useApp();
-  const isExpert = currentUser.role === "CONSERVATION_EXPERT";
+  const {
+    heritageSites,
+    assessments,
+    notifications,
+    currentUser,
+    setActiveSiteId,
+    pipelineStep,
+    isPipelineComplete
+  } = useApp();
+  const isExpert = currentUser?.role === "CONSERVATION_EXPERT";
 
-  const criticalCount = assessments.filter((a) => a.emergencyLevel === "Critical" || a.severity === "High").length;
-  const pendingCount = assessments.filter((a) => a.status === "Pending Review").length;
+  // Derive latest recent activity dynamically from actual application state
+  const latestNotif = notifications[0];
+  const latestAssessment = assessments[0];
+  
+  const recentActivityTitle = isPipelineComplete
+    ? (latestAssessment?.damageType
+        ? `${latestAssessment.damageType.toUpperCase()} ASSESSMENT`
+        : "AI DAMAGE ASSESSMENT")
+    : `AI PIPELINE STEP 0${pipelineStep}/09 IN PROGRESS`;
+
+  const recentActivityTime = latestNotif?.time || "JUST NOW";
+
+  const pipelineStepNames = [
+    "Photometric Calibration",
+    "Spatial Polygon Anchoring",
+    "Contrast & Noise Normalization",
+    "Lithic Texture Extraction",
+    "Crack Segmentation Masking",
+    "Salt Efflorescence Estimation",
+    "Severity & Risk Scoring",
+    "Temporal Consensus Matrix",
+    "Conservation Recommendation"
+  ];
+
+  const currentStepName = pipelineStepNames[pipelineStep - 1] || "Neural Processing";
 
   const handleInspectSite = (siteId) => {
     setActiveSiteId(siteId);
@@ -24,70 +55,59 @@ export function DashboardPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      {/* Top Banner Header Section */}
+      {/* Top Header Section */}
       <div style={styles.topHeaderRow}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-            <span className="module-badge">MOD-01</span>
-            <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: 0 }}>
-              HERITAGE STRUCTURAL INTELLIGENCE OVERVIEW
-            </h1>
-          </div>
+          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 6px 0" }}>
+            HERITAGE STRUCTURAL INTELLIGENCE OVERVIEW
+          </h1>
           <p style={styles.headerDescription}>
             Autonomous heritage monitoring orchestration: <span style={{ color: "#3B6978" }}>cross-temporal perceptual consensus</span>,{" "}
             <span style={{ color: "#3B6978" }}>lithic deterioration detection</span>, and conservation planning.
           </p>
         </div>
-
-        <div>
-          <button
-            onClick={() => navigate(isExpert ? "/expert/image-analysis" : "/admin/heritage-sites")}
-            className="btn-primary"
-            style={{ padding: "9px 16px" }}
-          >
-            <Plus size={15} />
-            <span>{isExpert ? "Intake New Observation" : "Add Heritage Site"}</span>
-          </button>
-        </div>
       </div>
 
-      {/* Top 4 Metrics Cards Grid */}
+      {/* Top 3 Summary Cards Grid (All 3 Cards strictly STATIC, 3-Column Layout) */}
       <div style={styles.metricsGrid}>
+        {/* Card 1: MONITORED SITES (Static) */}
         <StatCard
-          label="MONITORED ASSETS"
+          label="MONITORED SITES"
           value={heritageSites.length}
-          subtitle={`${heritageSites.length} ASI Circles Active`}
           icon={Landmark}
           iconBg="#F7EDE9"
           iconColor="#A04022"
         />
+
+        {/* Card 2: TOTAL OBSERVATIONS (Static) */}
         <StatCard
           label="TOTAL OBSERVATIONS"
           value="670"
-          subtitle={<span style={{ color: "#16A34A" }}>{pendingCount} pending consensus</span>}
           icon={Scan}
           iconBg="#DCFCE7"
           iconColor="#16A34A"
         />
+
+        {/* Card 3: LAST RECENT ACTIVITY (Static Information Card) */}
         <StatCard
-          label="CONSENSUS MEMORY"
-          value="94.2%"
-          subtitle="Mean agreement index"
-          icon={Binary}
+          label="LAST RECENT ACTIVITY"
+          value={
+            <div style={{ fontSize: "13.5px", fontFamily: "var(--font-mono)", fontWeight: 700, color: "#1C1917", lineHeight: "1.3" }}>
+              {recentActivityTitle}
+            </div>
+          }
+          subtitle={
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "10.5px", color: "var(--accent-primary)", fontWeight: 700 }}>
+              {recentActivityTime.toUpperCase()}
+            </span>
+          }
+          icon={Activity}
           iconBg="#EFF6FF"
           iconColor="#2563EB"
         />
-        <StatCard
-          label="INTERVENTIONS"
-          value={criticalCount}
-          subtitle={<span style={{ color: "#D97706" }}>1 urgent desalination</span>}
-          icon={ShieldAlert}
-          iconBg="#FEF3C7"
-          iconColor="#D97706"
-        />
       </div>
 
-      {/* Section 1: Monitored Heritage Sites Grid */}
+      {/* Monitored Heritage Sites Cards Grid */}
       <div>
         <div style={styles.sectionTitleRow}>
           <h2 className="font-serif-heading" style={styles.sectionTitle}>
@@ -102,34 +122,24 @@ export function DashboardPage() {
           </button>
         </div>
 
+        {/* Heritage Site Cards */}
         <div style={styles.sitesGrid}>
           {heritageSites.map((site) => (
             <div key={site.id} className="ancestra-card" style={styles.siteCard}>
-              {/* Image Banner */}
-              <div style={styles.cardImageWrapper}>
-                <img src={site.image} alt={site.name} style={styles.cardImage} />
-                <div style={styles.cardOverlayTop}>
-                  <span style={styles.dynastyBadge}>{site.period}</span>
-                  <span style={styles.scoreBadge}>SCORE: {site.healthScore}/100</span>
-                </div>
+              <div
+                onClick={() => handleInspectSite(site.id)}
+                style={styles.clickableImageWrapper}
+                title={`Inspect ${site.name}`}
+              >
+                <img src={site.image} alt={site.name} style={styles.cleanImage} />
               </div>
 
-              {/* Card Body */}
-              <div style={styles.cardBody}>
+              <div style={styles.cardFooter}>
                 <h3 className="font-serif-heading" style={styles.siteName}>
                   {site.name.toUpperCase()}
                 </h3>
-                <div style={styles.siteSubMeta}>
-                  {site.location} • {site.period}
-                </div>
-                <p style={styles.siteDesc}>{site.description}</p>
-              </div>
-
-              {/* Card Footer */}
-              <div style={styles.cardFooter}>
-                <span style={styles.footerRegionsText}>{site.regionsCount} Architectural Regions</span>
                 <button onClick={() => handleInspectSite(site.id)} style={styles.inspectBtn}>
-                  <span>Inspect</span>
+                  <span>INSPECT</span>
                   <ArrowRight size={13} />
                 </button>
               </div>
@@ -138,51 +148,89 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Section 2: Recent AI Observations & Alerts */}
+      {/* Recent AI Observations & System Notifications */}
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "20px" }}>
-        {/* Recent Assessments Table */}
+        
+        {/* Change 2: RECENT AI STRUCTURAL ASSESSMENTS Section (Only shows results after pipeline completion; shows live pipeline step when incomplete) */}
         <div className="ancestra-card">
           <div style={styles.cardHeaderRow}>
             <h3 className="font-serif-heading" style={{ fontSize: "15px", margin: 0 }}>
               RECENT AI STRUCTURAL ASSESSMENTS
             </h3>
-            <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-              LIVE FEED
+            <span style={{ fontSize: "11px", color: isPipelineComplete ? "#16A34A" : "var(--accent-primary)", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+              {isPipelineComplete ? "RESULTS PUBLISHED" : "PIPELINE ACTIVE"}
             </span>
           </div>
-          <div style={styles.recentList}>
-            {assessments.slice(0, 3).map((asm) => (
-              <div key={asm.id} style={styles.recentRow}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                    <span style={styles.asmCode}>{asm.id}</span>
-                    <StatusBadge status={asm.severity} size="sm" />
-                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{asm.date}</span>
+
+          {isPipelineComplete ? (
+            /* Display actual published AI Structural Assessment Results */
+            <div style={styles.recentList}>
+              {assessments.slice(0, 3).map((asm) => (
+                <div key={asm.id} style={styles.recentRow}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                      <span style={styles.asmCode}>{asm.id}</span>
+                      <StatusBadge status={asm.severity} size="sm" />
+                      <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{asm.date}</span>
+                    </div>
+                    <div style={{ fontWeight: 600, fontSize: "13px" }}>{asm.siteName}</div>
+                    <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                      Region: {asm.regionName} • Finding: <strong>{asm.damageType}</strong>
+                    </div>
                   </div>
-                  <div style={{ fontWeight: 600, fontSize: "13px" }}>{asm.siteName}</div>
-                  <div style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
-                    Region: {asm.regionName} • Finding: <strong>{asm.damageType}</strong>
+                  <button
+                    onClick={() => navigate("/expert/results")}
+                    className="btn-secondary"
+                    style={{ padding: "5px 10px", fontSize: "11px" }}
+                  >
+                    Review Result
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* Display Live AI Perception Pipeline Activity Status (No Fake Results) */
+            <div style={styles.pipelineProgressBox}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+                <Cpu size={20} color="#A04022" />
+                <div>
+                  <div style={{ fontSize: "12px", fontFamily: "var(--font-mono)", fontWeight: 700, color: "#A04022" }}>
+                    AI PERCEPTION PIPELINE — STEP 0{pipelineStep} OF 09
+                  </div>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: "#1C1917" }}>
+                    {currentStepName.toUpperCase()} — IN PROGRESS
                   </div>
                 </div>
-                <button
-                  onClick={() => navigate("/expert/results")}
-                  className="btn-secondary"
-                  style={{ padding: "5px 10px", fontSize: "11px" }}
-                >
-                  Review Result
-                </button>
               </div>
-            ))}
-          </div>
+              <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "0 0 12px 0" }}>
+                Complete all 9 AI perception pipeline steps to publish the official computer vision structural damage assessment findings.
+              </p>
+              <button
+                onClick={() => navigate("/expert/ai-analysis")}
+                className="btn-primary"
+                style={{ padding: "6px 14px", fontSize: "11.5px" }}
+              >
+                <Play size={12} />
+                <span>Go to AI Perception Pipeline ({pipelineStep}/9)</span>
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Notifications Quick Panel */}
-        <div className="ancestra-card">
+        {/* Change 1: FULLY CLICKABLE SYSTEM NOTIFICATIONS CARD (Navigates to /notifications) */}
+        <div
+          onClick={() => navigate("/notifications")}
+          className="ancestra-card"
+          style={{ ...styles.clickableNotifCard, cursor: "pointer" }}
+          title="Click to view System Notifications & Conservation Alerts"
+        >
           <div style={styles.cardHeaderRow}>
             <h3 className="font-serif-heading" style={{ fontSize: "15px", margin: 0 }}>
               SYSTEM NOTIFICATIONS
             </h3>
-            <span className="version-pill">{notifications.length} ALERTS</span>
+            <span style={{ fontSize: "11px", fontFamily: "var(--font-mono)", color: "var(--accent-primary)", fontWeight: 700 }}>
+              {notifications.filter((n) => !n.read).length} UNREAD
+            </span>
           </div>
           <div style={styles.notifList}>
             {notifications.slice(0, 4).map((n) => (
@@ -196,6 +244,7 @@ export function DashboardPage() {
             ))}
           </div>
         </div>
+
       </div>
     </div>
   );
@@ -214,8 +263,8 @@ const styles = {
   },
   metricsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gap: "16px"
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: "18px"
   },
   sectionTitleRow: {
     display: "flex",
@@ -251,90 +300,48 @@ const styles = {
     display: "flex",
     flexDirection: "column"
   },
-  cardImageWrapper: {
+  clickableImageWrapper: {
     position: "relative",
-    height: "170px",
+    height: "200px",
     width: "100%",
-    backgroundColor: "#E2DDD5"
-  },
-  cardImage: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover"
-  },
-  cardOverlayTop: {
-    position: "absolute",
-    top: "10px",
-    left: "10px",
-    right: "10px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  dynastyBadge: {
-    backgroundColor: "rgba(28, 25, 23, 0.8)",
-    color: "#FFFFFF",
-    fontSize: "10px",
-    fontFamily: "var(--font-sans)",
-    padding: "3px 8px",
-    borderRadius: "3px"
-  },
-  scoreBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    color: "var(--text-primary)",
-    fontSize: "10px",
-    fontFamily: "var(--font-mono)",
-    fontWeight: "700",
-    padding: "3px 8px",
-    borderRadius: "3px",
-    border: "1px solid var(--border-color)"
-  },
-  cardBody: {
-    padding: "16px",
-    flex: 1
-  },
-  siteName: {
-    fontSize: "15px",
-    margin: 0,
-    lineHeight: "1.3"
-  },
-  siteSubMeta: {
-    fontSize: "11px",
-    color: "var(--text-muted)",
-    marginTop: "4px",
-    marginBottom: "8px"
-  },
-  siteDesc: {
-    fontSize: "12px",
-    color: "var(--text-secondary)",
-    display: "-webkit-box",
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: "vertical",
+    backgroundColor: "#1C1917",
+    cursor: "pointer",
     overflow: "hidden"
   },
+  cleanImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    transition: "transform 0.2s ease"
+  },
   cardFooter: {
-    padding: "12px 16px",
-    borderTop: "1px solid var(--border-light)",
-    backgroundColor: "#FAF8F5",
+    padding: "16px",
+    backgroundColor: "#FFFFFF",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between"
+    justifyContent: "space-between",
+    gap: "12px"
   },
-  footerRegionsText: {
-    fontSize: "11px",
-    color: "var(--text-muted)",
-    fontFamily: "var(--font-mono)"
+  siteName: {
+    fontSize: "13px",
+    margin: 0,
+    lineHeight: "1.35",
+    flex: 1,
+    paddingRight: "8px",
+    wordBreak: "break-word"
   },
   inspectBtn: {
     background: "none",
     border: "none",
     fontSize: "12px",
-    fontWeight: "600",
+    fontWeight: "700",
     color: "var(--accent-primary)",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
-    gap: "4px"
+    gap: "4px",
+    letterSpacing: "0.04em",
+    flexShrink: 0
   },
   cardHeaderRow: {
     display: "flex",
@@ -363,6 +370,15 @@ const styles = {
     fontSize: "10.5px",
     fontWeight: "700",
     color: "var(--accent-primary)"
+  },
+  pipelineProgressBox: {
+    padding: "14px",
+    backgroundColor: "#FAF8F5",
+    border: "1px solid var(--border-light)",
+    borderRadius: "4px"
+  },
+  clickableNotifCard: {
+    transition: "transform 0.12s ease, border-color 0.12s ease"
   },
   notifList: {
     display: "flex",

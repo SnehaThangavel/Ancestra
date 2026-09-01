@@ -1,289 +1,499 @@
 import React, { createContext, useContext, useState } from "react";
 import {
-  USERS,
-  INITIAL_HERITAGE_SITES,
-  INITIAL_ARCHITECTURAL_REGIONS,
-  INITIAL_ASSESSMENTS,
-  INITIAL_REPORTS,
-  INITIAL_NOTIFICATIONS
+  mockHeritageSites,
+  mockArchitecturalRegions,
+  mockAssessments,
+  mockReports,
+  mockNotifications
 } from "../data/mockData";
 
-const AppContext = createContext(null);
+const AppContext = createContext();
 
 export function AppProvider({ children }) {
-  // Registered Users Registry
-  const [registeredUsers, setRegisteredUsers] = useState([
+  // Authentication & Current User Role
+  const [currentUser, setCurrentUser] = useState({
+    id: "exp_01",
+    name: "Dr. A. Sharma",
+    title: "Lead Conservator (ASI)",
+    email: "a.sharma@asi.gov.in",
+    role: "CONSERVATION_EXPERT" // "CONSERVATION_EXPERT" or "ADMINISTRATOR"
+  });
+
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
+
+  // Application Global Core State
+  const [heritageSites, setHeritageSites] = useState(mockHeritageSites);
+  const [architecturalRegions, setArchitecturalRegions] = useState(mockArchitecturalRegions);
+  const [assessments, setAssessments] = useState(mockAssessments);
+  const [reports, setReports] = useState(mockReports);
+  const [notifications, setNotifications] = useState(mockNotifications);
+
+  // AI Perception Pipeline Progress State
+  const [pipelineStep, setPipelineStep] = useState(1);
+  const [isPipelineComplete, setIsPipelineComplete] = useState(false);
+
+  // Heritage Site Requests (Expert -> Admin Workflow)
+  const [siteRequests, setSiteRequests] = useState([
     {
-      id: "usr_exp_01",
-      name: "Dr. A. Sharma",
-      emailOrPhone: "a.sharma@asi.gov.in",
-      password: "password123",
-      title: "Lead Conservator (ASI)",
-      role: "CONSERVATION_EXPERT",
-      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150"
-    },
-    {
-      id: "usr_adm_01",
-      name: "Dr. S. Ranganathan",
-      emailOrPhone: "s.ranganathan@ancestra.org",
-      password: "password123",
-      title: "System Administrator",
-      role: "ADMINISTRATOR",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150"
+      id: "REQ-2026-001",
+      expertName: "Dr. A. Sharma",
+      expertEmail: "a.sharma@asi.gov.in",
+      siteName: "Kailasanathar Temple, Kanchipuram",
+      location: "Kanchipuram, Tamil Nadu",
+      circle: "ASI Chennai Circle",
+      material: "Sandstone & Mortar",
+      category: "State Protected Structural Site",
+      description: "7th-century Pallava dynasty architectural monument with deteriorating sandstone carvings.",
+      image: "https://images.unsplash.com/photo-1627894099419-f5ebba5e3f42?auto=format&fit=crop&q=80&w=800",
+      status: "PENDING ADMIN APPROVAL",
+      createdAt: "2026-09-01 09:30"
     }
   ]);
-
-  // Auth & Role State
-  const [currentUser, setCurrentUser] = useState(registeredUsers[0]);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  // Core Collections
-  const [heritageSites, setHeritageSites] = useState(INITIAL_HERITAGE_SITES);
-  const [architecturalRegions, setArchitecturalRegions] = useState(INITIAL_ARCHITECTURAL_REGIONS);
-  const [assessments, setAssessments] = useState(INITIAL_ASSESSMENTS);
-  const [reports, setReports] = useState(INITIAL_REPORTS);
-  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
 
   // AI Assessment Engine System Status
   const [aiEngineStatus, setAiEngineStatus] = useState({
     online: true,
-    modelState: "READY" // READY, TRAINING, UPDATING, MAINTENANCE, ERROR
+    modelState: "READY"
   });
 
-  // Global Context State
+  // Selected Active Context
   const [activeSiteId, setActiveSiteId] = useState("site_01");
   const [pendingAnalysis, setPendingAnalysis] = useState(null);
-  const [activeResult, setActiveResult] = useState(INITIAL_ASSESSMENTS[0]);
+  const [activeResult, setActiveResult] = useState(mockAssessments[0]);
+
+  // Toast Notification Message State
   const [toast, setToast] = useState(null);
 
-  // Toast Helper
-  const showToast = (message, type = "success") => {
+  const showToast = (message, type = "info") => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
   };
 
-  // Login Authentication Handler
-  const login = (emailOrPhone, password) => {
-    const foundUser = registeredUsers.find(
-      (u) =>
-        (u.emailOrPhone.toLowerCase() === emailOrPhone.trim().toLowerCase() ||
-          u.emailOrPhone === emailOrPhone.trim()) &&
-        u.password === password
-    );
-
-    if (foundUser) {
-      setCurrentUser(foundUser);
+  // Auth Handlers
+  const login = (email, password) => {
+    if (email.includes("admin") || email.includes("ranganathan")) {
+      const user = {
+        id: "adm_01",
+        name: "S. Ranganathan",
+        title: "Director General (ASI)",
+        email: email,
+        role: "ADMINISTRATOR"
+      };
+      setCurrentUser(user);
       setIsAuthenticated(true);
-      return { success: true, role: foundUser.role };
+      showToast("Signed in as Administrator.");
+      return { success: true, user };
+    } else {
+      const user = {
+        id: "exp_01",
+        name: "Dr. A. Sharma",
+        title: "Lead Conservator (ASI)",
+        email: email,
+        role: "CONSERVATION_EXPERT"
+      };
+      setCurrentUser(user);
+      setIsAuthenticated(true);
+      showToast("Signed in as Conservation Expert.");
+      return { success: true, user };
     }
-
-    return { success: false, message: "Invalid email/phone number or password." };
   };
 
-  // Register User
-  const registerUser = ({ fullName, emailOrPhone, password, designation, role }) => {
-    const exists = registeredUsers.some(
-      (u) => u.emailOrPhone.toLowerCase() === emailOrPhone.trim().toLowerCase()
-    );
-
-    if (exists) {
-      return { success: false, message: "An account with this email/phone number already exists." };
-    }
-
+  const registerUser = (userData) => {
     const newUser = {
       id: `usr_${Date.now()}`,
-      name: fullName,
-      emailOrPhone: emailOrPhone.trim(),
-      password: password,
-      title: designation || (role === "ADMINISTRATOR" ? "System Administrator" : "Conservation Expert"),
-      role: role === "ADMINISTRATOR" ? "ADMINISTRATOR" : "CONSERVATION_EXPERT",
-      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150"
+      name: userData.fullName,
+      title: userData.designation || "Conservation Officer",
+      email: userData.email,
+      role: userData.role || "CONSERVATION_EXPERT"
     };
-
-    setRegisteredUsers((prev) => [...prev, newUser]);
+    setCurrentUser(newUser);
+    setIsAuthenticated(true);
+    showToast(`Account registered successfully for ${userData.fullName}.`);
     return { success: true, user: newUser };
   };
 
   const logout = () => {
     setIsAuthenticated(false);
     setCurrentUser(null);
+    showToast("Logged out successfully.");
   };
 
-  // AI Engine Status Updates (Admin Only)
-  const updateAiEngineStatus = (newStatus) => {
-    setAiEngineStatus(newStatus);
-    showToast("AI ASSESSMENT ENGINE STATUS UPDATED.");
+  // Profile Update & Reset Password Handlers
+  const updateUserProfile = (updatedData) => {
+    setCurrentUser((prev) => ({
+      ...prev,
+      name: updatedData.name || prev.name,
+      email: updatedData.email || prev.email,
+      title: updatedData.title || prev.title
+    }));
+    showToast("USER PROFILE UPDATED SUCCESSFULLY.");
   };
 
-  // Heritage Site CRUD
+  const resetUserPassword = (currentPassword, newPassword) => {
+    if (!currentPassword) {
+      showToast("Please enter your current password.", "error");
+      return { success: false, message: "Please enter your current password." };
+    }
+    if (newPassword.length < 6) {
+      showToast("New password must be at least 6 characters.", "error");
+      return { success: false, message: "New password must be at least 6 characters." };
+    }
+    showToast("PASSWORD RESET SUCCESSFULLY.");
+    return { success: true };
+  };
+
+  // Heritage Sites CRUD Handlers
   const addHeritageSite = (siteData) => {
+    const newId = `site_${String(heritageSites.length + 1).padStart(2, "0")}`;
+    const newCode = `HST-0${heritageSites.length + 1}`;
     const newSite = {
-      ...siteData,
-      id: `site_${Date.now()}`,
-      code: siteData.code || `STE-${Math.floor(10 + Math.random() * 90)}`,
-      healthScore: 80,
+      id: newId,
+      code: newCode,
+      name: siteData.name,
+      location: siteData.location,
+      circle: siteData.circle || "ASI Directorate",
+      material: siteData.material || "Granite & Freestone",
+      category: siteData.category || "UNESCO World Heritage Site",
+      description: siteData.description || "",
+      image: siteData.image || "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
+      status: siteData.status || "MONITOR",
       regionsCount: 0,
-      lastAssessment: new Date().toISOString().split("T")[0],
-      status: "STABLE",
-      image: siteData.image || "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
+      lastAssessment: new Date().toISOString().split("T")[0]
     };
-    setHeritageSites((prev) => [newSite, ...prev]);
-    showToast("HERITAGE SITE REGISTERED SUCCESSFULLY.");
+    setHeritageSites([newSite, ...heritageSites]);
+    showToast(`HERITAGE SITE "${siteData.name}" REGISTERED SUCCESSFULLY.`);
+    return newSite;
   };
 
-  const updateHeritageSite = (siteId, updatedFields) => {
+  const updateHeritageSite = (siteId, updatedData) => {
     setHeritageSites((prev) =>
-      prev.map((s) => (s.id === siteId ? { ...s, ...updatedFields } : s))
+      prev.map((site) => (site.id === siteId ? { ...site, ...updatedData } : site))
     );
     showToast("HERITAGE SITE UPDATED SUCCESSFULLY.");
   };
 
   const deleteHeritageSite = (siteId) => {
-    setHeritageSites((prev) => prev.filter((s) => s.id !== siteId));
-    // Also remove associated architectural regions
-    setArchitecturalRegions((prev) => prev.filter((r) => r.siteId !== siteId));
-    showToast("HERITAGE SITE DELETED SUCCESSFULLY.");
+    const targetSite = heritageSites.find((s) => s.id === siteId);
+    setHeritageSites((prev) => prev.filter((site) => site.id !== siteId));
+    setArchitecturalRegions((prev) => prev.filter((reg) => reg.siteId !== siteId));
+    showToast(`HERITAGE SITE "${targetSite?.name || ""}" DELETED SUCCESSFULLY.`);
   };
 
-  // Architectural Region CRUD
+  // Architectural Regions CRUD Handlers
   const addArchitecturalRegion = (regionData) => {
-    const site = heritageSites.find((s) => s.id === regionData.siteId);
+    const newId = `reg_${String(architecturalRegions.length + 1).padStart(2, "0")}`;
     const newRegion = {
-      ...regionData,
-      id: `reg_${Date.now()}`,
-      siteName: site ? site.name : "Unknown Heritage Site",
-      lastAssessment: new Date().toISOString().split("T")[0],
-      damageScore: 30,
-      condition: "STABLE",
-      riskLevel: regionData.riskLevel || "LOW"
+      id: newId,
+      code: regionData.code || `REG-${String(architecturalRegions.length + 1).padStart(3, "0")}`,
+      siteId: regionData.siteId,
+      siteName: regionData.siteName,
+      name: regionData.name,
+      importance: regionData.importance || "Primary Load-Bearing Course",
+      riskLevel: regionData.riskLevel || "MEDIUM",
+      condition: regionData.riskLevel === "CRITICAL" ? "CRITICAL" : "MONITOR",
+      lastAssessment: new Date().toISOString().split("T")[0]
     };
-    setArchitecturalRegions((prev) => [newRegion, ...prev]);
+    setArchitecturalRegions([newRegion, ...architecturalRegions]);
+
     setHeritageSites((prev) =>
-      prev.map((s) => (s.id === regionData.siteId ? { ...s, regionsCount: (s.regionsCount || 0) + 1 } : s))
+      prev.map((site) =>
+        site.id === regionData.siteId
+          ? { ...site, regionsCount: (site.regionsCount || 0) + 1 }
+          : site
+      )
     );
-    showToast("ARCHITECTURAL REGION ADDED SUCCESSFULLY.");
+
+    showToast(`ARCHITECTURAL REGION "${regionData.name}" CREATED SUCCESSFULLY.`);
+    return newRegion;
   };
 
-  const updateArchitecturalRegion = (regionId, updatedFields) => {
+  const updateArchitecturalRegion = (regionId, updatedData) => {
     setArchitecturalRegions((prev) =>
-      prev.map((r) => (r.id === regionId ? { ...r, ...updatedFields } : r))
+      prev.map((reg) => (reg.id === regionId ? { ...reg, ...updatedData } : reg))
     );
     showToast("ARCHITECTURAL REGION UPDATED SUCCESSFULLY.");
   };
 
   const deleteArchitecturalRegion = (regionId) => {
+    const targetRegion = architecturalRegions.find((r) => r.id === regionId);
     setArchitecturalRegions((prev) => prev.filter((r) => r.id !== regionId));
-    showToast("ARCHITECTURAL REGION DELETED SUCCESSFULLY.");
+    showToast(`ARCHITECTURAL REGION "${targetRegion?.name || ""}" DELETED SUCCESSFULLY.`);
   };
 
-  // Record AI Assessment Result
-  const recordAssessmentResult = (resultObj) => {
-    setAssessments((prev) => [resultObj, ...prev]);
-    setActiveResult(resultObj);
-    
-    if (resultObj.emergencyLevel === "Critical" || resultObj.severity === "High") {
-      addNotification({
-        title: "CRITICAL STRUCTURAL DAMAGE DETECTED",
-        description: `${resultObj.damageType} detected at ${resultObj.regionName} (${resultObj.siteName}). AI confidence: ${(resultObj.confidence * 100).toFixed(0)}%.`,
-        priority: "Critical",
-        link: "/expert/results"
-      });
+  // AI Pipeline Step Progression Handlers
+  const advancePipelineStep = () => {
+    if (pipelineStep < 9) {
+      const nextStep = pipelineStep + 1;
+      setPipelineStep(nextStep);
+      if (nextStep === 9) {
+        setIsPipelineComplete(true);
+        showToast("All 9 AI Perception Pipeline steps completed. Results published!");
+      }
     }
   };
 
-  // Expert Status Update
-  const updateAssessmentStatus = (assessmentId, status, notes = "") => {
-    setAssessments((prev) =>
-      prev.map((asm) => (asm.id === assessmentId ? { ...asm, status, expertNotes: notes || asm.expertNotes } : asm))
-    );
-    if (activeResult && activeResult.id === assessmentId) {
-      setActiveResult((prev) => ({ ...prev, status, expertNotes: notes || prev.expertNotes }));
-    }
-    showToast(`ASSESSMENT MARKED AS ${status.toUpperCase()}.`);
+  const completeAllPipelineSteps = () => {
+    setPipelineStep(9);
+    setIsPipelineComplete(true);
+    showToast("AI Perception Pipeline analysis complete. Results published!");
   };
 
-  // Generate Report
-  const generateReportFromAssessment = (assessmentObj) => {
-    const asm = assessmentObj || activeResult;
-    if (!asm) return;
+  const resetPipeline = () => {
+    setPipelineStep(1);
+    setIsPipelineComplete(false);
+  };
 
-    const newReport = {
-      id: `REP-2026-${Math.floor(100 + Math.random() * 900)}`,
-      assessmentId: asm.id,
-      siteName: asm.siteName,
-      regionName: asm.regionName,
-      date: new Date().toISOString().split("T")[0],
-      damageType: asm.damageType,
-      severity: asm.severity,
-      confidence: typeof asm.confidence === "number" ? `${(asm.confidence * 100).toFixed(0)}%` : asm.confidence,
-      emergencyLevel: asm.emergencyLevel,
-      status: "Generated",
+  // Deduplicated Notification Creation Helper (Change 5)
+  const addNotificationDeduplicated = (notifObj) => {
+    setNotifications((prev) => {
+      // Check if duplicate notification exists by eventKey or requestId or identical description
+      const isDuplicate = prev.some(
+        (n) =>
+          (notifObj.eventKey && n.eventKey === notifObj.eventKey) ||
+          (notifObj.requestId && n.requestId === notifObj.requestId) ||
+          (n.title === notifObj.title && n.description === notifObj.description)
+      );
+
+      if (isDuplicate) {
+        return prev;
+      }
+      return [notifObj, ...prev];
+    });
+  };
+
+  // Heritage Site Request Workflow Handlers
+  const submitSiteRequest = (requestData) => {
+    const newReqId = `REQ-${Date.now()}`;
+    const newReq = {
+      id: newReqId,
       expertName: currentUser?.name || "Dr. A. Sharma",
-      summary: asm.recommendation || "Conservation inspection and periodic monitoring advised."
+      expertEmail: currentUser?.email || "a.sharma@asi.gov.in",
+      siteName: requestData.name,
+      location: requestData.location,
+      circle: requestData.circle || "ASI Directorate",
+      material: requestData.material || "Sandstone & Mortar",
+      category: requestData.category || "State Protected Structural Site",
+      description: requestData.description || "",
+      image: requestData.image || "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
+      status: "PENDING ADMIN APPROVAL",
+      createdAt: new Date().toLocaleString("en-US", { hour12: false })
     };
 
-    setReports((prev) => [newReport, ...prev]);
-    showToast("NEW CONSERVATION REPORT GENERATED.");
+    setSiteRequests([newReq, ...siteRequests]);
+
+    const adminNotif = {
+      id: `notif_req_${newReqId}`,
+      eventKey: `req_${newReqId}`,
+      targetRole: "ADMINISTRATOR",
+      title: "NEW HERITAGE SITE REQUEST",
+      description: `Expert ${newReq.expertName} submitted request for monument "${newReq.siteName}" (${newReq.location}).`,
+      time: "Just now",
+      priority: "URGENT",
+      read: false,
+      link: "/admin/heritage-sites",
+      requestId: newReqId
+    };
+
+    addNotificationDeduplicated(adminNotif);
+    showToast(`Site Request for "${requestData.name}" submitted for Admin Approval.`);
+    return newReq;
+  };
+
+  const acceptSiteRequest = (requestId) => {
+    const targetReq = siteRequests.find((r) => r.id === requestId);
+    setSiteRequests((prev) =>
+      prev.map((req) => (req.id === requestId ? { ...req, status: "ACCEPTED" } : req))
+    );
+
+    if (targetReq) {
+      const expertNotif = {
+        id: `notif_acc_${requestId}`,
+        eventKey: `acc_${requestId}`,
+        targetEmail: targetReq.expertEmail,
+        title: "HERITAGE SITE REQUEST ACCEPTED",
+        description: `Your heritage site request for "${targetReq.siteName}" has been accepted by Administrator.`,
+        time: "Just now",
+        priority: "INFORMATION",
+        read: false,
+        link: "/dashboard"
+      };
+      addNotificationDeduplicated(expertNotif);
+    }
+
+    showToast("Heritage Site Request Accepted.");
+  };
+
+  const rejectSiteRequest = (requestId, reason) => {
+    const targetReq = siteRequests.find((r) => r.id === requestId);
+    setSiteRequests((prev) =>
+      prev.map((req) =>
+        req.id === requestId ? { ...req, status: "REJECTED", rejectionReason: reason } : req
+      )
+    );
+
+    if (targetReq) {
+      const expertNotif = {
+        id: `notif_rej_${requestId}`,
+        eventKey: `rej_${requestId}`,
+        targetEmail: targetReq.expertEmail,
+        title: "HERITAGE SITE REQUEST REJECTED",
+        description: `Your site request for "${targetReq.siteName}" was rejected by Administrator. Reason: "${reason}".`,
+        time: "Just now",
+        priority: "CRITICAL",
+        read: false,
+        link: "/notifications"
+      };
+      addNotificationDeduplicated(expertNotif);
+    }
+
+    showToast(`Site Request Rejected. Reason: ${reason}`);
+  };
+
+  const approveAndCreateSiteFromRequest = (requestId, siteData) => {
+    const createdSite = addHeritageSite(siteData);
+    setSiteRequests((prev) =>
+      prev.map((req) => (req.id === requestId ? { ...req, status: "APPROVED / SITE CREATED" } : req))
+    );
+
+    const targetReq = siteRequests.find((r) => r.id === requestId);
+    if (targetReq) {
+      const expertNotif = {
+        id: `notif_app_${requestId}`,
+        eventKey: `app_${requestId}`,
+        targetEmail: targetReq.expertEmail,
+        title: "HERITAGE SITE REQUEST APPROVED",
+        description: `Administrator registered site "${createdSite.name}" from your request.`,
+        time: "Just now",
+        priority: "INFORMATION",
+        read: false,
+        link: "/dashboard"
+      };
+      addNotificationDeduplicated(expertNotif);
+    }
+  };
+
+  // AI Assessment Handlers
+  const recordAssessmentResult = (resultData) => {
+    setActiveResult(resultData);
+    setAssessments((prev) => {
+      const exists = prev.some((a) => a.id === resultData.id);
+      if (exists) return prev;
+      return [resultData, ...prev];
+    });
+
+    if (resultData.severity === "High" || resultData.severity === "Critical" || resultData.emergencyLevel === "Critical") {
+      const autoNotif = {
+        id: `notif_auto_${resultData.id}`,
+        eventKey: `crit_${resultData.id}`,
+        title: "CRITICAL DAMAGE SEVERITY DETECTED",
+        description: `[Region ID: ${resultData.regionCode || "REG-001"}] ${resultData.siteName} (${resultData.regionName}) structural damage crossed critical threshold. Finding: ${resultData.damageType}.`,
+        time: "Just now",
+        priority: "CRITICAL",
+        read: false,
+        link: "/expert/results"
+      };
+      addNotificationDeduplicated(autoNotif);
+    }
+  };
+
+  const updateAssessmentStatus = (assessmentId, newStatus, expertNotes = "") => {
+    setAssessments((prev) =>
+      prev.map((item) =>
+        item.id === assessmentId ? { ...item, status: newStatus, expertNotes } : item
+      )
+    );
+    setActiveResult((prev) => (prev ? { ...prev, status: newStatus, expertNotes } : prev));
+    showToast(`Assessment ${assessmentId} status updated to ${newStatus}.`);
+  };
+
+  const generateReportFromAssessment = (assessmentObj) => {
+    const newReport = {
+      id: `REP-2026-${String(reports.length + 1).padStart(3, "0")}`,
+      assessmentId: assessmentObj.id,
+      siteName: assessmentObj.siteName,
+      regionName: assessmentObj.regionName,
+      date: new Date().toISOString().split("T")[0],
+      damageType: assessmentObj.damageType,
+      severity: assessmentObj.severity,
+      emergencyLevel: assessmentObj.emergencyLevel,
+      confidence: typeof assessmentObj.confidence === "number" ? `${(assessmentObj.confidence * 100).toFixed(0)}%` : assessmentObj.confidence,
+      expertName: currentUser?.name || "Dr. A. Sharma",
+      summary: assessmentObj.recommendation || "Immediate conservation intervention recommended.",
+      status: "Assessed & Verified"
+    };
+
+    setReports([newReport, ...reports]);
     return newReport;
   };
 
-  // Notifications
-  const addNotification = ({ title, description, priority = "Info", link = "/notifications" }) => {
-    const newNotif = {
-      id: `notif_${Date.now()}`,
-      title,
-      description,
-      time: "Just now",
-      priority,
-      read: false,
-      link
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
+  const updateAiEngineStatus = (newStatus) => {
+    setAiEngineStatus(newStatus);
+    showToast("AI ASSESSMENT ENGINE STATUS UPDATED.");
   };
 
-  const markNotificationAsRead = (id) => {
+  const markNotificationAsRead = (notifId) => {
     setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      prev.map((n) => (n.id === notifId ? { ...n, read: true } : n))
     );
   };
-
-  const activeSite = heritageSites.find((s) => s.id === activeSiteId) || heritageSites[0];
 
   return (
     <AppContext.Provider
       value={{
         currentUser,
-        setCurrentUser,
         isAuthenticated,
         login,
         registerUser,
         logout,
-        registeredUsers,
+        updateUserProfile,
+        resetUserPassword,
+
         heritageSites,
         addHeritageSite,
         updateHeritageSite,
         deleteHeritageSite,
+
         architecturalRegions,
         addArchitecturalRegion,
         updateArchitecturalRegion,
         deleteArchitecturalRegion,
+
+        pipelineStep,
+        isPipelineComplete,
+        advancePipelineStep,
+        completeAllPipelineSteps,
+        resetPipeline,
+
+        siteRequests,
+        submitSiteRequest,
+        acceptSiteRequest,
+        rejectSiteRequest,
+        approveAndCreateSiteFromRequest,
+
         assessments,
         recordAssessmentResult,
         updateAssessmentStatus,
-        activeResult,
-        setActiveResult,
-        pendingAnalysis,
-        setPendingAnalysis,
+
         reports,
         generateReportFromAssessment,
+
         notifications,
-        addNotification,
         markNotificationAsRead,
+
         aiEngineStatus,
         updateAiEngineStatus,
+
         activeSiteId,
         setActiveSiteId,
-        activeSite,
+
+        pendingAnalysis,
+        setPendingAnalysis,
+
+        activeResult,
+        setActiveResult,
+
         toast,
         showToast
       }}
@@ -294,9 +504,5 @@ export function AppProvider({ children }) {
 }
 
 export function useApp() {
-  const context = useContext(AppContext);
-  if (!context) {
-    throw new Error("useApp must be used within an AppProvider");
-  }
-  return context;
+  return useContext(AppContext);
 }

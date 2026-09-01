@@ -14,6 +14,7 @@ import { HeritageSitesPage } from "./pages/admin/HeritageSitesPage";
 import { RegionsPage } from "./pages/admin/RegionsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
+import { ProfilePage } from "./pages/ProfilePage";
 
 function ProtectedRoutes() {
   const { isAuthenticated } = useApp();
@@ -47,6 +48,8 @@ export default function App() {
             {/* Common Routes */}
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/settings" element={<ProfilePage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

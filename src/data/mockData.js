@@ -1,4 +1,4 @@
-// ANCESTRA Mock Heritage Data Repository (Realistic Documentary Heritage Photography)
+// ANCESTRA Mock Heritage Data Repository
 
 export const USERS = {
   expert: {
@@ -11,77 +11,69 @@ export const USERS = {
   },
   admin: {
     id: "usr_adm_01",
-    name: "Dr. S. Ranganathan",
-    title: "System Administrator",
+    name: "S. Ranganathan",
+    title: "Director General (ASI)",
     emailOrPhone: "s.ranganathan@ancestra.org",
     role: "ADMINISTRATOR",
     avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=150"
   }
 };
 
-export const INITIAL_HERITAGE_SITES = [
+export const mockHeritageSites = [
   {
     id: "site_01",
-    code: "SHR-TMP",
+    code: "HST-01",
     name: "Shore Temple, Mahabalipuram",
     location: "Mahabalipuram, Tamil Nadu",
     period: "Pallava Dynasty • 700–728 CE",
     category: "UNESCO World Heritage Site",
-    structureType: "Coastal Granitic Freestone Complex",
     material: "Granite & Dressed Freestone Blocks",
-    circle: "Chennai Circle (ASI)",
-    healthScore: 68,
+    circle: "ASI Chennai Circle",
     regionsCount: 4,
     lastAssessment: "2026-08-26",
-    status: "ATTENTION",
+    status: "CRITICAL",
     image: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
     description: "Three-shrine complex built from dressed blocks of coastal granitic freestone. Highly exposed to Bay of Bengal maritime weathering and salt efflorescence."
   },
   {
     id: "site_02",
-    code: "BRI-TMP",
+    code: "HST-02",
     name: "Brihadisvara Temple, Thanjavur",
     location: "Thanjavur, Tamil Nadu",
     period: "Chola Dynasty • 1010 CE",
     category: "UNESCO World Heritage Site",
-    structureType: "Monolithic Granite Dravidian Vimana",
     material: "Interlocking Dry-Stone Granite",
-    circle: "Tiruchirappalli Circle (ASI)",
-    healthScore: 84,
+    circle: "ASI Tiruchirappalli Circle",
     regionsCount: 6,
     lastAssessment: "2026-08-20",
-    status: "STABLE",
+    status: "MONITOR",
     image: "https://images.unsplash.com/photo-1600100397608-f090742f4949?auto=format&fit=crop&q=80&w=800",
     description: "Massive monolithic granite Dravidian vimana (66m tall) resting on a square adhisthana plinth. Notable for interlocking dry-stone masonry."
   },
   {
     id: "site_03",
-    code: "HMP-CMP",
+    code: "HST-03",
     name: "Hampi Heritage Complex",
     location: "Hampi, Karnataka",
     period: "Vijayanagara Empire • 1513 CE",
     category: "UNESCO World Heritage Site",
-    structureType: "Megalithic Dry-Stone Architecture",
     material: "Porphyritic Granite & Mortarless Lintels",
-    circle: "Hampi Circle (ASI)",
-    healthScore: 78,
+    circle: "ASI Hampi Circle",
     regionsCount: 5,
     lastAssessment: "2026-08-15",
-    status: "STABLE",
+    status: "MONITOR",
     image: "https://images.unsplash.com/photo-1627894099419-f5ebba5e3f42?auto=format&fit=crop&q=80&w=800",
     description: "Vast megalithic dry-stone architecture with massive granite lintels, sculpted musical pillars, monolithic shrines, and multi-tiered mandapas."
   },
   {
     id: "site_04",
-    code: "KNK-TMP",
+    code: "HST-04",
     name: "Konark Sun Temple",
     location: "Konark, Odisha",
     period: "Eastern Ganga Dynasty • 1250 CE",
     category: "UNESCO World Heritage Site",
-    structureType: "Chariot-Shaped Sandstone Sanctuary",
     material: "Khondalite & Chlorite Sandstone",
-    circle: "Bhubaneswar Circle (ASI)",
-    healthScore: 62,
+    circle: "ASI Bhubaneswar Circle",
     regionsCount: 8,
     lastAssessment: "2026-08-18",
     status: "CRITICAL",
@@ -90,16 +82,15 @@ export const INITIAL_HERITAGE_SITES = [
   }
 ];
 
-export const INITIAL_ARCHITECTURAL_REGIONS = [
+export const mockArchitecturalRegions = [
   {
     id: "reg_01",
     siteId: "site_01",
     siteName: "Shore Temple, Mahabalipuram",
-    code: "SHR-E-VIM",
+    code: "REG-001",
     name: "East-Facing Rajasimhesvara Vimana",
-    type: "Vimana / Tower",
     importance: "Primary Sanctum Superstructure",
-    condition: "HIGH_RISK",
+    condition: "CRITICAL",
     riskLevel: "HIGH",
     lastAssessment: "2026-08-26",
     recentDamage: "Salt Efflorescence & Shear Crack",
@@ -109,9 +100,8 @@ export const INITIAL_ARCHITECTURAL_REGIONS = [
     id: "reg_02",
     siteId: "site_01",
     siteName: "Shore Temple, Mahabalipuram",
-    code: "SHR-S-PLN",
+    code: "REG-002",
     name: "Southern Adhisthana Plinth",
-    type: "Plinth / Base",
     importance: "Load-Bearing Foundation",
     condition: "MONITOR",
     riskLevel: "MEDIUM",
@@ -123,9 +113,8 @@ export const INITIAL_ARCHITECTURAL_REGIONS = [
     id: "reg_03",
     siteId: "site_01",
     siteName: "Shore Temple, Mahabalipuram",
-    code: "SHR-W-MND",
+    code: "REG-003",
     name: "Western Small Shrine Mandapa",
-    type: "Mandapa / Hall",
     importance: "Secondary Enclosure",
     condition: "STABLE",
     riskLevel: "LOW",
@@ -137,9 +126,8 @@ export const INITIAL_ARCHITECTURAL_REGIONS = [
     id: "reg_04",
     siteId: "site_02",
     siteName: "Brihadisvara Temple, Thanjavur",
-    code: "BRI-MAIN-VIM",
+    code: "REG-004",
     name: "Main 13-Tiered Vimana Tower",
-    type: "Vimana / Tower",
     importance: "Central Monument Spire",
     condition: "STABLE",
     riskLevel: "LOW",
@@ -149,39 +137,10 @@ export const INITIAL_ARCHITECTURAL_REGIONS = [
   },
   {
     id: "reg_05",
-    siteId: "site_02",
-    siteName: "Brihadisvara Temple, Thanjavur",
-    code: "BRI-N-GOP",
-    name: "Northern Keravan Gopuram Gateway",
-    type: "Gopuram / Gate",
-    importance: "Entrance Gateway Structure",
-    condition: "MONITOR",
-    riskLevel: "MEDIUM",
-    lastAssessment: "2026-08-12",
-    recentDamage: "Vertical Mortar Gap",
-    damageScore: 38
-  },
-  {
-    id: "reg_06",
-    siteId: "site_03",
-    siteName: "Hampi Heritage Complex",
-    code: "HMP-VIT-CHR",
-    name: "Vittala Stone Chariot Wheel Hub",
-    type: "Sculpture / Shrine",
-    importance: "Iconic Monolithic Monument",
-    condition: "MONITOR",
-    riskLevel: "MEDIUM",
-    lastAssessment: "2026-08-15",
-    recentDamage: "Abrasive Weathering Crack",
-    damageScore: 42
-  },
-  {
-    id: "reg_07",
     siteId: "site_04",
     siteName: "Konark Sun Temple",
-    code: "KNK-JGM-ROOF",
+    code: "REG-005",
     name: "Jagamohana Pyramidal Roof Steps",
-    type: "Roof / Superstructure",
     importance: "Primary Assembly Hall Roof",
     condition: "CRITICAL",
     riskLevel: "HIGH",
@@ -191,12 +150,13 @@ export const INITIAL_ARCHITECTURAL_REGIONS = [
   }
 ];
 
-export const INITIAL_ASSESSMENTS = [
+export const mockAssessments = [
   {
     id: "ASM-2026-089",
     siteId: "site_01",
     siteName: "Shore Temple, Mahabalipuram",
     regionId: "reg_01",
+    regionCode: "REG-001",
     regionName: "East-Facing Rajasimhesvara Vimana",
     date: "2026-08-26",
     damageType: "Structural Crack",
@@ -220,7 +180,8 @@ export const INITIAL_ASSESSMENTS = [
     id: "ASM-2026-088",
     siteId: "site_04",
     siteName: "Konark Sun Temple",
-    regionId: "reg_07",
+    regionId: "reg_05",
+    regionCode: "REG-005",
     regionName: "Jagamohana Pyramidal Roof Steps",
     date: "2026-08-18",
     damageType: "Erosion & Spalling",
@@ -239,39 +200,16 @@ export const INITIAL_ASSESSMENTS = [
       { date: "Jul 2026", score: 75 },
       { date: "Aug 2026", score: 82 }
     ]
-  },
-  {
-    id: "ASM-2026-082",
-    siteId: "site_03",
-    siteName: "Hampi Heritage Complex",
-    regionId: "reg_06",
-    regionName: "Vittala Stone Chariot Wheel Hub",
-    date: "2026-08-15",
-    damageType: "Crack",
-    severity: "Medium",
-    confidence: 0.88,
-    damageTrend: "Stable",
-    emergencyLevel: "Attention",
-    recommendation: "Non-destructive ultrasonic pulse testing to monitor internal micro-cracks.",
-    status: "Confirmed",
-    imageUrl: "https://images.unsplash.com/photo-1627894099419-f5ebba5e3f42?auto=format&fit=crop&q=80&w=800",
-    expertNotes: "Hairline fracture stable over past 6 months.",
-    historicalData: [
-      { date: "Jan 2026", score: 30 },
-      { date: "Mar 2026", score: 32 },
-      { date: "May 2026", score: 31 },
-      { date: "Jul 2026", score: 33 },
-      { date: "Aug 2026", score: 34 }
-    ]
   }
 ];
 
-export const INITIAL_REPORTS = [
+export const mockReports = [
   {
     id: "REP-2026-041",
     assessmentId: "ASM-2026-089",
     siteName: "Shore Temple, Mahabalipuram",
     regionName: "East-Facing Rajasimhesvara Vimana",
+    regionCode: "REG-001",
     date: "2026-08-26",
     damageType: "Structural Crack",
     severity: "High",
@@ -280,30 +218,16 @@ export const INITIAL_REPORTS = [
     status: "Generated",
     expertName: "Dr. A. Sharma",
     summary: "Immediate structural shoring & salt extraction desalting regimen required for East-Facing Rajasimhesvara Vimana."
-  },
-  {
-    id: "REP-2026-038",
-    assessmentId: "ASM-2026-088",
-    siteName: "Konark Sun Temple",
-    regionName: "Jagamohana Pyramidal Roof Steps",
-    date: "2026-08-18",
-    damageType: "Erosion & Spalling",
-    severity: "High",
-    confidence: "91%",
-    emergencyLevel: "Urgent",
-    status: "Approved",
-    expertName: "Dr. A. Sharma",
-    summary: "Biocide application and silica micro-injection intervention proposed for coastal sandstone preservation."
   }
 ];
 
-export const INITIAL_NOTIFICATIONS = [
+export const mockNotifications = [
   {
     id: "notif_01",
     title: "CRITICAL DAMAGE DETECTED",
-    description: "East-Facing Rajasimhesvara Vimana at Shore Temple recorded high-risk structural crack (94% AI confidence).",
+    description: "East-Facing Rajasimhesvara Vimana [REG-001] recorded high-risk structural crack (94% AI confidence).",
     time: "10 mins ago",
-    priority: "Critical",
+    priority: "CRITICAL",
     read: false,
     link: "/expert/results"
   },
@@ -312,26 +236,8 @@ export const INITIAL_NOTIFICATIONS = [
     title: "EXPERT REVIEW REQUIRED",
     description: "Assessment ASM-2026-089 requires formal sign-off by Lead Conservator.",
     time: "45 mins ago",
-    priority: "Urgent",
+    priority: "URGENT",
     read: false,
     link: "/expert/results"
-  },
-  {
-    id: "notif_03",
-    title: "NEW AI ASSESSMENT COMPLETED",
-    description: "Computer vision pipeline generated temporal trend forecast for Hampi Stone Chariot Wheel.",
-    time: "2 hours ago",
-    priority: "Info",
-    read: true,
-    link: "/expert/damage-history"
-  },
-  {
-    id: "notif_04",
-    title: "CONSERVATION REPORT GENERATED",
-    description: "Report REP-2026-041 compiled and ready for ASI directorate submission.",
-    time: "1 day ago",
-    priority: "Info",
-    read: true,
-    link: "/reports"
   }
 ];

@@ -1,8 +1,23 @@
 import React from "react";
 
-export function StatCard({ label, value, subtitle, icon: Icon, iconBg = "#F7EDE9", iconColor = "#A04022" }) {
+export function StatCard({
+  label,
+  value,
+  subtitle,
+  icon: Icon,
+  iconBg = "#F7EDE9",
+  iconColor = "#A04022",
+  onClick
+}) {
   return (
-    <div className="ancestra-card" style={styles.card}>
+    <div
+      onClick={onClick}
+      className="ancestra-card"
+      style={{
+        ...styles.card,
+        cursor: onClick ? "pointer" : "default"
+      }}
+    >
       <div style={styles.topRow}>
         <span style={styles.label}>{label}</span>
         {Icon && (
@@ -12,9 +27,13 @@ export function StatCard({ label, value, subtitle, icon: Icon, iconBg = "#F7EDE9
         )}
       </div>
       <div style={styles.valueRow}>
-        <span style={styles.value}>{value}</span>
+        {typeof value === "string" || typeof value === "number" ? (
+          <span style={styles.value}>{value}</span>
+        ) : (
+          value
+        )}
       </div>
-      {subtitle && <div style={styles.subtitle}>{subtitle}</div>}
+      {subtitle ? <div style={styles.subtitle}>{subtitle}</div> : null}
     </div>
   );
 }
@@ -24,7 +43,9 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
-    minHeight: "105px"
+    minHeight: "110px",
+    padding: "16px 18px",
+    transition: "transform 0.12s ease, border-color 0.12s ease"
   },
   topRow: {
     display: "flex",
@@ -32,7 +53,7 @@ const styles = {
     justifyContent: "space-between"
   },
   label: {
-    fontSize: "10.5px",
+    fontSize: "11px",
     fontFamily: "var(--font-sans)",
     fontWeight: "700",
     letterSpacing: "0.08em",
@@ -49,18 +70,19 @@ const styles = {
     flexShrink: 0
   },
   valueRow: {
-    marginTop: "6px",
-    marginBottom: "4px"
+    marginTop: "8px",
+    marginBottom: "2px"
   },
   value: {
     fontFamily: "var(--font-serif)",
-    fontSize: "26px",
+    fontSize: "30px",
     fontWeight: "700",
     color: "var(--text-primary)",
     lineHeight: "1"
   },
   subtitle: {
     fontSize: "11px",
-    color: "var(--text-muted)"
+    color: "var(--text-muted)",
+    marginTop: "4px"
   }
 };

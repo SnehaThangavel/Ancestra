@@ -5,7 +5,7 @@ import { StatusBadge } from "../components/common/StatusBadge";
 import { EmergencyBadge } from "../components/common/EmergencyBadge";
 import { Modal } from "../components/common/Modal";
 import { generateAncestrapdfReport } from "../utils/pdfGenerator";
-import { FileText, Download, Search, Eye, FileDown } from "lucide-react";
+import { Search, Eye, FileDown } from "lucide-react";
 
 export function ReportsPage() {
   const { reports, heritageSites, architecturalRegions, assessments, showToast } = useApp();
@@ -92,7 +92,6 @@ export function ReportsPage() {
             <span>View</span>
           </button>
 
-          {/* Button text MUST be exactly 'EXPORT AS PDF' */}
           <button
             onClick={() => handleExportPdf(row)}
             className="btn-primary"
@@ -112,12 +111,9 @@ export function ReportsPage() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-            <span className="module-badge">REP-07</span>
-            <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: 0 }}>
-              CONSERVATION REPORTS & EXECUTIVE DOSSIERS
-            </h1>
-          </div>
+          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
+            CONSERVATION REPORTS & EXECUTIVE DOSSIERS
+          </h1>
           <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
             Formal structural assessment dossiers compiled for ASI Directorate and ICOMOS submission.
           </p>

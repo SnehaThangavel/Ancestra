@@ -18,8 +18,7 @@ export function RegionsPage() {
   const filteredRegions = architecturalRegions.filter(
     (r) =>
       r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.siteName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.type.toLowerCase().includes(searchQuery.toLowerCase())
+      r.siteName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleConfirmDelete = () => {
@@ -45,11 +44,6 @@ export function RegionsPage() {
       accessor: "name"
     },
     {
-      header: "TYPE",
-      accessor: "type",
-      render: (row) => <span className="version-pill">{row.type}</span>
-    },
-    {
       header: "STRUCTURAL IMPORTANCE",
       accessor: "importance"
     },
@@ -65,7 +59,6 @@ export function RegionsPage() {
     }
   ];
 
-  // Add Action column for Administrator ONLY
   if (isAdmin) {
     columns.push({
       header: "ACTIONS",
@@ -100,12 +93,9 @@ export function RegionsPage() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-            <span className="module-badge">ADM-03</span>
-            <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: 0 }}>
-              ARCHITECTURAL REGION MANAGEMENT
-            </h1>
-          </div>
+          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
+            ARCHITECTURAL REGION MANAGEMENT
+          </h1>
           <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
             Deconstruct heritage structures into monitored structural regions (Vimanas, Plinths, Pillars, Domes, Sculptures).
           </p>
@@ -127,7 +117,7 @@ export function RegionsPage() {
             type="text"
             className="form-input"
             style={{ border: "none", background: "none" }}
-            placeholder="Search architectural regions by name, monument, or region type..."
+            placeholder="Search architectural regions by name or monument..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />

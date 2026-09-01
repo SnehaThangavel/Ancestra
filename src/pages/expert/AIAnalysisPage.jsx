@@ -1,30 +1,19 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 import { AIProgress } from "../../components/expert/AIProgress";
 import { analyzeHeritageImage } from "../../services/mockAIService";
-import { Cpu, ShieldAlert, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export function AIAnalysisPage() {
   const navigate = useNavigate();
-  const { pendingAnalysis, recordAssessmentResult } = useApp();
-  const [activeStep, setActiveStep] = useState(1);
+  const { pendingAnalysis, recordAssessmentResult, isPipelineComplete } = useApp();
 
   const imageSrc =
     pendingAnalysis?.imageUrl ||
     "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800";
 
   useEffect(() => {
-    // Step animation interval over 3 seconds (9 steps)
-    const stepInterval = setInterval(() => {
-      setActiveStep((prev) => {
-        if (prev < 9) return prev + 1;
-        return prev;
-      });
-    }, 320);
-
-    // Call mock AI Service
-    let isMounted = true;
     analyzeHeritageImage({
       siteId: pendingAnalysis?.siteId,
       siteName: pendingAnalysis?.siteName,
@@ -32,38 +21,29 @@ export function AIAnalysisPage() {
       regionName: pendingAnalysis?.regionName,
       imagePreviewUrl: imageSrc
     }).then((result) => {
-      if (isMounted) {
-        recordAssessmentResult(result);
-        setTimeout(() => {
-          navigate("/expert/results");
-        }, 600);
-      }
+      recordAssessmentResult(result);
     });
-
-    return () => {
-      isMounted = false;
-      clearInterval(stepInterval);
-    };
   }, []);
+
+  const handleNavigateResults = () => {
+    navigate("/expert/results");
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-          <span className="module-badge">PROC-04</span>
-          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: 0 }}>
-            AI COMPUTER VISION PERCEPTION PIPELINE
-          </h1>
-        </div>
+        <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
+          AI COMPUTER VISION PERCEPTION PIPELINE
+        </h1>
         <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
           Executing neural lithic damage segmentation and structural stress index calculation for{" "}
           <strong>{pendingAnalysis?.regionName || "East-Facing Rajasimhesvara Vimana"}</strong>.
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "24px" }}>
-        {/* Uploaded Image View Card */}
-        <div className="ancestra-card" style={{ padding: "16px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.3fr", gap: "24px", alignItems: "flex-start" }}>
+        {/* Left Target Frame Card (Slightly Expanded Spacing & Comfortable Breathing Room) */}
+        <div className="ancestra-card" style={{ padding: "20px 22px 22px 22px", display: "flex", flexDirection: "column" }}>
           <div style={styles.imageCardHeader}>
             <span style={styles.imageTitle}>TARGET OBSERVATION FRAME</span>
             <span className="label-code">RESOLUTION: 6000x4000 (RAW)</span>
@@ -75,30 +55,35 @@ export function AIAnalysisPage() {
               <div style={styles.scanLine} />
               <div style={styles.scanningBadge}>
                 <Sparkles size={12} color="#FFFFFF" />
-                <span>AI COMPUTER VISION SEGMENTATION IN PROGRESS</span>
+                <span>
+                  {isPipelineComplete
+                    ? "NEURAL SEGMENTATION COMPLETE"
+                    : "AI COMPUTER VISION SEGMENTATION IN PROGRESS"}
+                </span>
               </div>
             </div>
           </div>
 
+          {/* Expanded Padding & Spacing for Site Details */}
           <div style={styles.metaRow}>
             <div>
               <span className="label-uppercase">HERITAGE SITE:</span>
-              <div style={{ fontWeight: 600, fontSize: "12px" }}>
+              <div style={{ fontWeight: 600, fontSize: "13px", marginTop: "4px", color: "#1C1917", lineHeight: "1.35" }}>
                 {pendingAnalysis?.siteName || "Shore Temple, Mahabalipuram"}
               </div>
             </div>
             <div>
               <span className="label-uppercase">ARCHITECTURAL REGION:</span>
-              <div style={{ fontWeight: 600, fontSize: "12px" }}>
+              <div style={{ fontWeight: 600, fontSize: "13px", marginTop: "4px", color: "#1C1917", lineHeight: "1.35" }}>
                 {pendingAnalysis?.regionName || "East-Facing Rajasimhesvara Vimana"}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Processing Steps */}
+        {/* Right Processing Steps Card */}
         <div className="ancestra-card">
-          <AIProgress activeStep={activeStep} totalSteps={9} />
+          <AIProgress onCompleteResults={handleNavigateResults} />
         </div>
       </div>
     </div>
@@ -110,7 +95,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: "12px"
+    marginBottom: "14px" // Slightly expanded spacing below header
   },
   imageTitle: {
     fontSize: "11px",
@@ -122,7 +107,7 @@ const styles = {
   imageContainer: {
     position: "relative",
     width: "100%",
-    height: "360px",
+    height: "270px", // Comfortable proportional height
     borderRadius: "4px",
     overflow: "hidden",
     backgroundColor: "#1C1917"
@@ -167,10 +152,11 @@ const styles = {
   },
   metaRow: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    marginTop: "14px",
-    paddingTop: "12px",
+    gap: "16px",
+    marginTop: "16px", // Slightly expanded spacing between image and details
+    paddingTop: "14px",
     borderTop: "1px solid var(--border-light)"
   }
 };
