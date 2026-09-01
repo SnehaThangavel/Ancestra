@@ -1,15 +1,56 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Node dependencies & builds
+node_modules/
+**/node_modules/
+dist/
+dist-ssr/
 
-# Node modules & build
-node_modules
-dist
-dist-ssr
+# Python Virtual Environments
+.venv/
+**/.venv/
+venv/
+**/venv/
+env/
+**/env/
+ENV/
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Model weights & large binaries (>100MB)
+*.pth
+*.pt
+*.onnx
+*.bin
+*.h5
+*.ckpt
+backend/app/ai/model_weights/*
+!backend/app/ai/model_weights/.gitkeep
+
+# Databases & SQLite files
+*.db
+*.sqlite
+*.sqlite3
 
 # Environment variables
 .env
@@ -17,11 +58,20 @@ dist-ssr
 .env.*.local
 *.local
 
-# Editor directories and files
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor & OS files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
