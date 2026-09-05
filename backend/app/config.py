@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     LOG_LEVEL: str = "INFO"
 
+    # Image Quality & Ingestion Thresholds
+    MIN_IMAGE_WIDTH: int = 400
+    MIN_IMAGE_HEIGHT: int = 300
+    BLUR_LAPLACIAN_MIN_VAR: float = 80.0
+    GLARE_MAX_RATIO: float = 0.25
+    MIN_QUALITY_THRESHOLD: float = 0.35
+    ORB_MAX_FEATURES: int = 2000
+    MIN_MATCH_COUNT: int = 8
+    RANSAC_REPROJ_THRESHOLD: float = 5.0
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
