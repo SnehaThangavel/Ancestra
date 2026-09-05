@@ -1,6 +1,7 @@
 """Pydantic schemas for temporal deterioration trends and forecasting."""
 
-from typing import List, Dict, Any, Optional
+import uuid
+from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -16,14 +17,14 @@ class TemporalDataPoint(BaseModel):
 class TemporalTrendRequest(BaseModel):
     """Request schema for temporal analysis and forecasting."""
 
-    region_id: int
+    region_id: Union[uuid.UUID, int, str]
     forecast_days: int = Field(default=90, ge=1, le=365)
 
 
 class TemporalTrendResponse(BaseModel):
     """Response schema containing trend analysis and deterioration velocity."""
 
-    region_id: int
+    region_id: Union[uuid.UUID, int, str]
     deterioration_rate_per_day: float
     projected_health_index_90d: float
     time_to_critical_threshold_days: Optional[float] = None

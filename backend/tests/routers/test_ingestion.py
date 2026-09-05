@@ -1,16 +1,14 @@
 """Tests for Ingestion API routes."""
 
 import io
+import uuid
 import pytest
 import numpy as np
 import cv2
 from fastapi.testclient import TestClient
-from app.main import app
-
-client = TestClient(app)
 
 
-def test_upload_observation_route() -> None:
+def test_upload_observation_route(client: TestClient) -> None:
     """Test /api/v1/ingestion/upload endpoint."""
     # Generate valid test image
     img = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -32,4 +30,6 @@ def test_upload_observation_route() -> None:
     assert data["monument_id"] == "TAJ_MAHAL_001"
     assert data["resolution_w"] == 640
     assert data["resolution_h"] == 480
-    assert data["observation_id"] > 0
+    assert data["observation_id"] is not None
+    # Validate it is a valid UUID
+    assert uuid.UUID(str(data["observation_id"]))

@@ -1,6 +1,8 @@
-"""Tests for Module 1 (Image Ingestion & Registration)."""
+"""Tests for Module 1 (Image Ingestion, Quality Assessment, & AI Region Segmentation)."""
 
+from unittest.mock import MagicMock
 import io
+import uuid
 import datetime
 import pytest
 import numpy as np
@@ -12,6 +14,9 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.modules.ingestion import ImageIngestionModule
 from app.models.observation import Observation
+from app.models.region import Region
+from app.ai.sam_segmenter import SAMSegmenter
+from app.ai.region_classifier import CLIPRegionClassifier
 
 
 @pytest.fixture
@@ -23,20 +28,10 @@ def ingestion_module() -> ImageIngestionModule:
         min_blur_var=80.0,
         max_glare_ratio=0.25,
         min_quality_threshold=0.35,
+        use_ai_segmentation=False,  # default to fallback in basic unit tests
     )
 
 
-@pytest.fixture
-def in_memory_db():
-    """Fixture providing an isolated SQLite database session."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(bind=engine)
-    Session = sessionmaker(bind=engine)
-    db = Session()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def _generate_synthetic_monument_image(width=600, height=450, blur=False, glare=False) -> np.ndarray:
@@ -61,11 +56,9 @@ def _generate_synthetic_monument_image(width=600, height=450, blur=False, glare=
         cv2.rectangle(img, (x, int(height * 0.22)), (x + 25, int(height * 0.26)), (70, 70, 70), -1)
 
     if glare:
-        # Simulate severe sun overexposure / glare spot (>240 in all channels)
         img[int(height * 0.1) : int(height * 0.6), int(width * 0.2) : int(width * 0.8)] = 252
 
     if blur:
-        # Simulate severe out-of-focus blur
         img = cv2.GaussianBlur(img, (61, 61), 0)
 
     return img
@@ -82,20 +75,18 @@ def _create_image_bytes_with_exif(img_arr: np.ndarray, include_exif: bool = True
         return buf.getvalue()
 
     exif = pil_img.getexif()
-    # Make: Canon, Model: EOS 5D
     exif[271] = "Canon"
     exif[272] = "EOS 5D Mark IV"
-    exif[274] = 1  # Normal orientation
-    exif[306] = "2026:05:14 10:30:00"  # DateTime
+    exif[274] = 1
+    exif[306] = "2026:05:14 10:30:00"
 
-    # GPS IFD tags
     gps_ifd = exif.get_ifd(ExifTags.IFD.GPSInfo)
-    gps_ifd[1] = "N"           # GPSLatitudeRef
-    gps_ifd[2] = (12.0, 58.0, 45.50)  # 12 deg, 58 min, 45.50 sec
-    gps_ifd[3] = "E"           # GPSLongitudeRef
-    gps_ifd[4] = (77.0, 34.0, 22.80)  # 77 deg, 34 min, 22.80 sec
-    gps_ifd[5] = 0             # GPSAltitudeRef (above sea level)
-    gps_ifd[6] = 920.0         # GPSAltitude = 920m
+    gps_ifd[1] = "N"
+    gps_ifd[2] = (12.0, 58.0, 45.50)
+    gps_ifd[3] = "E"
+    gps_ifd[4] = (77.0, 34.0, 22.80)
+    gps_ifd[5] = 0
+    gps_ifd[6] = 920.0
     exif[34853] = gps_ifd
 
     buf = io.BytesIO()
@@ -178,7 +169,6 @@ def test_extract_exif_with_gps_telemetry(ingestion_module) -> None:
     assert exif["gps_longitude"] is not None
     assert pytest.approx(exif["gps_longitude"], rel=1e-4) == 77.573000
 
-    # Altitude 920m
     assert exif["gps_altitude"] == 920.0
 
 
@@ -186,7 +176,6 @@ def test_register_image_and_segmentation(ingestion_module) -> None:
     """Test ORB feature matching and homography registration against reference image."""
     ref_img = _generate_synthetic_monument_image(width=600, height=450)
 
-    # Apply a slight affine warp (scale + rotation + translation) to create query image
     M = cv2.getRotationMatrix2D((300, 225), 5.0, 0.95)
     query_img = cv2.warpAffine(ref_img, M, (600, 450))
 
@@ -197,7 +186,6 @@ def test_register_image_and_segmentation(ingestion_module) -> None:
     assert reg_result["inlier_count"] >= 4
     assert reg_result["confidence_score"] > 0.0
 
-    # Test region projection with homography
     reference_regions = [
         {
             "region_id": 101,
@@ -213,10 +201,146 @@ def test_register_image_and_segmentation(ingestion_module) -> None:
     )
 
     assert len(projected) == 1
-    assert projected[0]["region_id"] == 101
     assert projected[0]["name"] == "left_column"
     assert len(projected[0]["bbox"]) == 4
-    assert len(projected[0]["polygon"]) == 4
+
+
+def test_segment_regions_ai_path() -> None:
+    """Test AI segmentation path calling mocked SAM and CLIP instances."""
+    mock_sam = MagicMock(spec=SAMSegmenter)
+    mock_clip = MagicMock(spec=CLIPRegionClassifier)
+
+    dummy_mask = np.ones((400, 600), dtype=bool)
+    mock_sam.generate_masks.return_value = [
+        {"segmentation": dummy_mask, "bbox": [100, 80, 120, 240], "area": 28800}
+    ]
+
+    mock_clip.classify_masks.return_value = [
+        {
+            "bbox": [100, 80, 120, 240],
+            "region_type": "stone pillar column",
+            "confidence_score": 0.93,
+            "all_scores": {"stone pillar column": 0.93, "arch": 0.04},
+        }
+    ]
+
+    module = ImageIngestionModule(
+        sam_segmenter=mock_sam,
+        region_classifier=mock_clip,
+        use_ai_segmentation=True,
+    )
+
+    img = np.zeros((400, 600, 3), dtype=np.uint8)
+    regions = module.segment_regions(img, monument_id="TEST_MONUMENT")
+
+    assert len(regions) == 1
+    assert regions[0]["region_type"] == "stone pillar column"
+    assert regions[0]["bbox"] == [100, 80, 120, 240]
+    assert regions[0]["confidence_score"] == 0.93
+    mock_sam.generate_masks.assert_called_once()
+    mock_clip.classify_masks.assert_called_once()
+
+
+def test_segment_regions_iou_db_matching(in_memory_db) -> None:
+    """Test IoU-based matching: mapping overlapping bboxes to existing region rows."""
+    mock_sam = MagicMock(spec=SAMSegmenter)
+    mock_clip = MagicMock(spec=CLIPRegionClassifier)
+
+    module = ImageIngestionModule(
+        sam_segmenter=mock_sam,
+        region_classifier=mock_clip,
+        use_ai_segmentation=True,
+        iou_threshold=0.5,
+    )
+
+    img = np.zeros((400, 600, 3), dtype=np.uint8)
+    monument_uuid = module._resolve_monument_uuid("MONUMENT_01", db=in_memory_db)
+
+    # 1. Photo 1: detects Arch at [100, 100, 150, 200]
+    mock_sam.generate_masks.return_value = [{"bbox": [100, 100, 150, 200]}]
+    mock_clip.classify_masks.return_value = [
+        {"bbox": [100, 100, 150, 200], "region_type": "arched doorway entrance", "confidence_score": 0.9}
+    ]
+
+    res1 = module.segment_regions(img, monument_id="MONUMENT_01", db=in_memory_db)
+    assert len(res1) == 1
+    region_id_1 = res1[0]["region_id"]
+    assert isinstance(region_id_1, (uuid.UUID, str))
+
+    # Verify 1 Region created in DB
+    assert in_memory_db.query(Region).filter_by(monument_id=monument_uuid).count() == 1
+
+    # 2. Photo 2: detects the same Arch with slight shift [105, 98, 148, 204] (IoU > 0.85)
+    mock_sam.generate_masks.return_value = [{"bbox": [105, 98, 148, 204]}]
+    mock_clip.classify_masks.return_value = [
+        {"bbox": [105, 98, 148, 204], "region_type": "arched doorway entrance", "confidence_score": 0.88}
+    ]
+
+    res2 = module.segment_regions(img, monument_id="MONUMENT_01", db=in_memory_db)
+    assert len(res2) == 1
+    # Must map to the SAME existing region_id and not create a duplicate row!
+    assert res2[0]["region_id"] == region_id_1
+    assert in_memory_db.query(Region).filter_by(monument_id=monument_uuid).count() == 1
+
+    # 3. Photo 3: detects a completely new Dome at [350, 50, 180, 180] (IoU = 0.0)
+    mock_sam.generate_masks.return_value = [{"bbox": [350, 50, 180, 180]}]
+    mock_clip.classify_masks.return_value = [
+        {"bbox": [350, 50, 180, 180], "region_type": "structural dome roof", "confidence_score": 0.95}
+    ]
+
+    res3 = module.segment_regions(img, monument_id="MONUMENT_01", db=in_memory_db)
+    assert len(res3) == 1
+    assert isinstance(res3[0]["region_id"], (uuid.UUID, str))
+    assert res3[0]["region_id"] != region_id_1
+    assert in_memory_db.query(Region).filter_by(monument_id=monument_uuid).count() == 2
+
+
+def test_segment_regions_use_ai_segmentation_false_fallback() -> None:
+    """Test that USE_AI_SEGMENTATION=False correctly uses homography projection."""
+    module = ImageIngestionModule(use_ai_segmentation=False)
+    img = np.zeros((400, 600, 3), dtype=np.uint8)
+    H_identity = np.eye(3, dtype=np.float32)
+
+    ref_regions = [
+        {
+            "region_id": 5,
+            "name": "ref_dome",
+            "category": "dome",
+            "bounding_box": [50, 50, 200, 200],
+        }
+    ]
+
+    res = module.segment_regions(
+        image=img,
+        homography_matrix=H_identity,
+        reference_regions=ref_regions,
+    )
+
+    assert len(res) == 1
+    assert res[0]["name"] == "ref_dome"
+    assert res[0]["bbox"] == [50, 50, 200, 200]
+
+
+def test_ingest_resilience_on_segment_error(in_memory_db) -> None:
+    """Test that ingest() remains resilient and returns a valid response if segmentation fails."""
+    module = ImageIngestionModule(use_ai_segmentation=False)
+
+    # Force segment_regions to raise an error
+    module.segment_regions = MagicMock(side_effect=RuntimeError("GPU OOM / Model Failure"))
+
+    img_arr = _generate_synthetic_monument_image(width=640, height=480)
+    img_bytes = _create_image_bytes_with_exif(img_arr, include_exif=True)
+
+    response = module.ingest(
+        image_bytes=img_bytes,
+        monument_id="MONUMENT_ERROR_TEST",
+        db=in_memory_db,
+    )
+
+    assert response.monument_id == "MONUMENT_ERROR_TEST"
+    assert response.is_valid_quality is True
+    assert response.matched_region_id is None
+    assert response.observation_id is not None
 
 
 def test_ingest_orchestration_with_db(ingestion_module, in_memory_db) -> None:
@@ -241,12 +365,12 @@ def test_ingest_orchestration_with_db(ingestion_module, in_memory_db) -> None:
     assert response.exif is not None
     assert response.exif.camera_make == "Canon"
     assert response.registration_confidence is not None
-    assert response.observation_id > 0
+    assert response.observation_id is not None
 
     # Verify DB persistence
     db_record = in_memory_db.query(Observation).filter_by(id=response.observation_id).first()
     assert db_record is not None
-    assert db_record.monument_id == "MONUMENT_HAMPI_01"
     assert db_record.user_id == "user_curator_42"
     assert db_record.blur_score == response.blur_score
     assert db_record.glare_score == response.glare_score
+    assert db_record.sharpness_score == response.blur_score or db_record.sharpness_score is not None

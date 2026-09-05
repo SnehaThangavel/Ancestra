@@ -19,15 +19,44 @@ class Settings(BaseSettings):
     PORT: int = 8000
     CORS_ORIGINS: List[str] = ["*"]
 
-    # Database Configuration (SQLite default for dev, PostgreSQL in prod)
-    DATABASE_URL: str = "sqlite:///./ancestra.db"
+    # Database Configuration (PostgreSQL)
+    DATABASE_URL: str = "postgresql://ancestra_user:ancestra_password@localhost:5432/ancestra_db"
+    TEST_DATABASE_URL: str = "postgresql://ancestra_user:ancestra_password@localhost:5432/ancestra_test_db"
 
     # AI Model Settings (SAM & CLIP)
-    SAM_CHECKPOINT_PATH: str = "app/ai/model_weights/sam_vit_h_4b8939.pth"
-    SAM_MODEL_TYPE: str = "vit_h"
+    SAM_CHECKPOINT_PATH: str = "app/ai/model_weights/sam_vit_b_01ec64.pth"
+    SAM_MODEL_TYPE: str = "vit_b"
+    SAM_POINTS_PER_SIDE: int = 32
+    SAM_PRED_IOU_THRESH: float = 0.86
+    SAM_STABILITY_SCORE_THRESH: float = 0.92
+    SAM_MIN_MASK_REGION_AREA: int = 500
+    MIN_MASK_AREA_RATIO: float = 0.005
+
     CLIP_MODEL_NAME: str = "ViT-B-32"
     CLIP_PRETRAINED: str = "laion2b_s34b_b79k"
+    CLIP_REGION_LABELS: List[str] = [
+        "stone pillar column",
+        "structural dome roof",
+        "arched doorway entrance",
+        "masonry wall facade",
+        "carved stone sculpture",
+        "ancient stone inscription",
+        "decorative carved frieze",
+        "weathered foundation base",
+        "person or tourist",
+        "vegetation or trees",
+        "clear or cloudy sky",
+        "vehicle or modern object",
+    ]
+    CLIP_NEGATIVE_LABELS: List[str] = [
+        "person or tourist",
+        "vegetation or trees",
+        "clear or cloudy sky",
+        "vehicle or modern object",
+    ]
     DEVICE: str = "cpu"
+    USE_AI_SEGMENTATION: bool = True
+    REGION_IOU_THRESHOLD: float = 0.5
 
     # Storage & Uploads
     UPLOAD_DIR: str = "./uploads"

@@ -1,6 +1,7 @@
 """Pydantic schemas for the six-factor reliability computation."""
 
-from typing import Dict, Any
+import uuid
+from typing import Dict, Any, Union
 from pydantic import BaseModel, Field
 
 
@@ -18,13 +19,13 @@ class ReliabilityFactors(BaseModel):
 class ReliabilityScoreRequest(BaseModel):
     """Request schema to compute composite reliability."""
 
-    observation_id: int
+    observation_id: Union[uuid.UUID, int, str]
     custom_weights: Dict[str, float] = Field(default_factory=dict)
 
 
 class ReliabilityScoreResponse(BaseModel):
     """Response schema containing composite reliability score and factor weights."""
 
-    observation_id: int
+    observation_id: Union[uuid.UUID, int, str]
     composite_reliability: float = Field(..., ge=0.0, le=1.0)
     factors: ReliabilityFactors

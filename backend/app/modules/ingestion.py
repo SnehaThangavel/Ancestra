@@ -1,10 +1,11 @@
-"""Module 1: Image Quality Assessment, EXIF Metadata Extraction, and ORB Registration.
+"""Module 1: Image Quality Assessment, EXIF Metadata Extraction, and AI Region Segmentation.
 
 SESCI Architecture - Patent Claim Scope:
 Handles image quality validation (Laplacian variance blur, luminance glare/exposure),
 EXIF telemetry parsing (DMS-to-decimal GPS, timestamp, camera make/model),
-ORB keypoint feature matching, and RANSAC homography alignment against baseline
-architectural monument regions.
+ORB keypoint feature matching, RANSAC homography alignment, and zero-shot
+architectural component segmentation (SAM + OpenCLIP) with IoU-based database
+region matching and robust homography fallback.
 """
 
 from typing import Dict, Any, Tuple, Optional, List, Union, BinaryIO
@@ -19,7 +20,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.observation import Observation
+from app.models.region import Region
 from app.schemas.ingestion import EXIFMetadata, ImageIngestionResponse
+from app.ai import SAMSegmenter, CLIPRegionClassifier, get_sam_segmenter, get_region_classifier
 from app.utils.image_utils import (
     compute_laplacian_variance,
     detect_glare_ratio,
@@ -44,8 +47,12 @@ class ImageIngestionModule:
         max_orb_features: Optional[int] = None,
         min_matches: Optional[int] = None,
         ransac_threshold: Optional[float] = None,
+        sam_segmenter: Optional[SAMSegmenter] = None,
+        region_classifier: Optional[CLIPRegionClassifier] = None,
+        use_ai_segmentation: Optional[bool] = None,
+        iou_threshold: Optional[float] = None,
     ) -> None:
-        """Initialize the Image Ingestion module with configurable thresholds.
+        """Initialize the Image Ingestion module with configurable thresholds and AI models.
 
         Args:
             min_width: Minimum allowable image width in pixels.
@@ -56,6 +63,10 @@ class ImageIngestionModule:
             max_orb_features: Number of ORB features to compute for keypoint matching.
             min_matches: Minimum number of matched keypoints required for homography estimation.
             ransac_threshold: Maximum allowable reprojection error in pixels for RANSAC.
+            sam_segmenter: Injected SAMSegmenter instance (created once at app startup).
+            region_classifier: Injected CLIPRegionClassifier instance.
+            use_ai_segmentation: Flag to toggle AI segmentation vs homography fallback.
+            iou_threshold: IoU overlap threshold for matching existing database regions.
         """
         self.min_width = min_width or getattr(settings, "MIN_IMAGE_WIDTH", 400)
         self.min_height = min_height or getattr(settings, "MIN_IMAGE_HEIGHT", 300)
@@ -67,6 +78,21 @@ class ImageIngestionModule:
         self.max_orb_features = max_orb_features or getattr(settings, "ORB_MAX_FEATURES", 2000)
         self.min_matches = min_matches or getattr(settings, "MIN_MATCH_COUNT", 8)
         self.ransac_threshold = ransac_threshold or getattr(settings, "RANSAC_REPROJ_THRESHOLD", 5.0)
+
+        # AI Segmentation configuration & models
+        self.use_ai_segmentation = (
+            use_ai_segmentation
+            if use_ai_segmentation is not None
+            else getattr(settings, "USE_AI_SEGMENTATION", True)
+        )
+        self.iou_threshold = (
+            iou_threshold
+            if iou_threshold is not None
+            else getattr(settings, "REGION_IOU_THRESHOLD", 0.5)
+        )
+
+        self.sam_segmenter = sam_segmenter
+        self.region_classifier = region_classifier
 
         # Initialize reusable ORB feature detector
         self.orb = cv2.ORB_create(
@@ -126,7 +152,6 @@ class ImageIngestionModule:
 
         # 1. Blur evaluation via Laplacian variance
         laplacian_var = compute_laplacian_variance(image)
-        # Smooth normalized sharpness score: 0.0 (fully blurred) to 1.0 (crisp edge contrast)
         sharpness_score = float(np.clip(laplacian_var / (laplacian_var + 120.0) * 1.5, 0.0, 1.0))
 
         # 2. Exposure evaluation (glare & underexposure)
@@ -200,17 +225,7 @@ class ImageIngestionModule:
             image_input: File path, raw bytes buffer, or PIL Image object.
 
         Returns:
-            Dict[str, Any]: Dictionary containing parsed EXIF fields:
-                - camera_make (str or None)
-                - camera_model (str or None)
-                - iso (int or None)
-                - exposure_time (float or None)
-                - focal_length (float or None)
-                - orientation (int or None)
-                - gps_latitude (float decimal degrees or None)
-                - gps_longitude (float decimal degrees or None)
-                - gps_altitude (float meters or None)
-                - timestamp (datetime or None)
+            Dict[str, Any]: Dictionary containing parsed EXIF fields.
         """
         exif_dict: Dict[str, Any] = {
             "camera_make": None,
@@ -287,7 +302,6 @@ class ImageIngestionModule:
                 pass
 
             if not gps_info:
-                # Fallback to direct tag lookup
                 gps_info = raw_exif.get(34853)
 
             if gps_info and isinstance(gps_info, dict):
@@ -316,28 +330,12 @@ class ImageIngestionModule:
     ) -> Dict[str, Any]:
         """Register input photo against reference monument image using ORB and RANSAC homography.
 
-        Algorithm:
-            1. Converts input and reference images to single-channel 8-bit grayscale.
-            2. Detects keypoints and extracts binary descriptors with ORB (up to max_orb_features).
-            3. Matches descriptors using Brute-Force Matcher with Hamming norm & cross-checking.
-            4. Sorts matches by Hamming distance and keeps top candidates.
-            5. Computes perspective homography matrix using RANSAC to reject outlier matches.
-            6. Calculates inlier ratio and composite registration confidence score.
-            7. If insufficient matches (< min_matches) or poor inlier ratio, gracefully returns
-               registration_success=False with None homography.
-
         Args:
             image: Input query image array (BGR or Grayscale).
             reference_image: Reference monument baseline image array (BGR or Grayscale).
 
         Returns:
-            Dict[str, Any]:
-                - registration_success (bool): True if robust homography was found.
-                - homography_matrix (np.ndarray or None): 3x3 perspective transform matrix.
-                - inlier_count (int): Number of RANSAC inlier matches.
-                - inlier_ratio (float): Fraction of matches that are inliers.
-                - confidence_score (float): Normalized alignment confidence [0.0, 1.0].
-                - matched_keypoints_count (int): Total good matches evaluated.
+            Dict[str, Any]: Registration success status, homography matrix, and metrics.
         """
         fail_response: Dict[str, Any] = {
             "registration_success": False,
@@ -391,7 +389,7 @@ class ImageIngestionModule:
         # Sort matches by distance
         sorted_matches = sorted(raw_matches, key=lambda m: m.distance)
 
-        # Keep top percentage of matches (at least min_matches if available)
+        # Keep top percentage of matches
         top_k = max(self.min_matches, int(len(sorted_matches) * 0.25))
         good_matches = sorted_matches[: min(len(sorted_matches), max(top_k, self.min_matches))]
 
@@ -417,7 +415,6 @@ class ImageIngestionModule:
         inlier_count = int(np.sum(mask))
         inlier_ratio = float(inlier_count / len(good_matches)) if len(good_matches) > 0 else 0.0
 
-        # Minimum inliers required for a valid perspective registration
         if inlier_count < 4 or inlier_ratio < 0.15:
             return {
                 "registration_success": False,
@@ -428,7 +425,6 @@ class ImageIngestionModule:
                 "matched_keypoints_count": len(good_matches),
             }
 
-        # Calculate confidence metric scaling by both inlier ratio and absolute inlier density
         density_factor = min(1.0, inlier_count / 20.0)
         confidence_score = float(np.clip(inlier_ratio * (0.5 + 0.5 * density_factor), 0.0, 1.0))
 
@@ -456,50 +452,177 @@ class ImageIngestionModule:
         return None, 0.0, None
 
     # -------------------------------------------------------------------------
-    # 4. Region Segmentation & Projection
+    # 4. Region Segmentation & IoU DB Resolution (SAM + CLIP + Fallback)
     # -------------------------------------------------------------------------
-    def segment_regions(
+    @staticmethod
+    def _compute_bbox_iou(
+        box_a: Union[List[Union[int, float]], Tuple[Union[int, float], ...]],
+        box_b: Union[List[Union[int, float]], Tuple[Union[int, float], ...]],
+    ) -> float:
+        """Compute Intersection-over-Union (IoU) between two bounding boxes [x, y, w, h].
+
+        Args:
+            box_a: [x, y, w, h] coordinates of box A.
+            box_b: [x, y, w, h] coordinates of box B.
+
+        Returns:
+            float: IoU score in range [0.0, 1.0].
+        """
+        if len(box_a) < 4 or len(box_b) < 4:
+            return 0.0
+
+        xa, ya, wa, ha = box_a[:4]
+        xb, yb, wb, hb = box_b[:4]
+
+        xa1, ya1, xa2, ya2 = xa, ya, xa + wa, ya + ha
+        xb1, yb1, xb2, yb2 = xb, yb, xb + wb, yb + hb
+
+        inter_x1 = max(xa1, xb1)
+        inter_y1 = max(ya1, yb1)
+        inter_x2 = min(xa2, xb2)
+        inter_y2 = min(ya2, yb2)
+
+        inter_w = max(0.0, inter_x2 - inter_x1)
+        inter_h = max(0.0, inter_y2 - inter_y1)
+        inter_area = inter_w * inter_h
+
+        area_a = max(0.0, wa * ha)
+        area_b = max(0.0, wb * hb)
+        union_area = area_a + area_b - inter_area
+
+        if union_area <= 0.0:
+            return 0.0
+
+        return float(inter_area / union_area)
+
+    @staticmethod
+    def _resolve_monument_uuid(monument_id: Union[uuid.UUID, str], db: Optional[Session] = None) -> uuid.UUID:
+        """Resolve or generate a UUID for a monument identifier and ensure record exists in DB."""
+        if isinstance(monument_id, uuid.UUID):
+            mon_uuid = monument_id
+        else:
+            try:
+                mon_uuid = uuid.UUID(str(monument_id))
+            except (ValueError, AttributeError):
+                mon_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, str(monument_id))
+
+        if db is not None:
+            from app.models.monument import Monument
+            monument = db.query(Monument).filter(Monument.id == mon_uuid).first()
+            if not monument:
+                monument = Monument(
+                    id=mon_uuid,
+                    name=str(monument_id),
+                    location_name="Default Location",
+                    heritage_status="Registered",
+                    importance_tier=1,
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc),
+                )
+                db.add(monument)
+                db.commit()
+                db.refresh(monument)
+        return mon_uuid
+
+    def _resolve_or_create_region(
+        self,
+        db: Session,
+        monument_id: Union[uuid.UUID, str],
+        region_type: str,
+        bbox: List[int],
+        polygon: Optional[List[List[float]]] = None,
+    ) -> Union[uuid.UUID, int, str]:
+        """Resolve region_id against existing monument Region rows via IoU, or insert a new record.
+
+        Args:
+            db: SQLAlchemy database session.
+            monument_id: Unique monument string ID or UUID.
+            region_type: Category label (e.g. 'stone pillar column').
+            bbox: [x, y, w, h] bounding box.
+            polygon: Optional polygon coordinates.
+
+        Returns:
+            Union[uuid.UUID, int, str]: Resolved or newly assigned Region ID.
+        """
+        monument_uuid = self._resolve_monument_uuid(monument_id, db=db)
+        existing_regions = db.query(Region).filter_by(monument_id=monument_uuid).all()
+
+        best_match = None
+        best_iou = 0.0
+
+        for reg in existing_regions:
+            if (
+                reg.bounding_box
+                and isinstance(reg.bounding_box, (list, tuple))
+                and len(reg.bounding_box) >= 4
+            ):
+                iou = self._compute_bbox_iou(bbox, reg.bounding_box[:4])
+                # Optionally prioritize matching categories
+                if reg.category == region_type:
+                    iou *= 1.1
+
+                if iou > best_iou:
+                    best_iou = iou
+                    best_match = reg
+
+        # If spatial overlap meets threshold, map to existing region
+        if best_match is not None and best_iou >= self.iou_threshold:
+            logger.debug(
+                f"Matched existing Region ID {best_match.id} ('{best_match.name}') "
+                f"with IoU {best_iou:.3f}"
+            )
+            return best_match.id
+
+        # Otherwise, persist a new Region record
+        cat_count = sum(1 for r in existing_regions if r.category == region_type)
+        reg_name = f"{region_type.replace(' ', '_')}_{cat_count + 1}"
+
+        new_reg = Region(
+            monument_id=monument_uuid,
+            name=reg_name,
+            category=region_type,
+            bounding_box=bbox,
+            reference_features={"polygon": polygon} if polygon else None,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        db.add(new_reg)
+        db.commit()
+        db.refresh(new_reg)
+        logger.info(
+            f"Created new Region record ID {new_reg.id} ('{reg_name}') for monument '{monument_id}'"
+        )
+        return new_reg.id
+
+    def _segment_regions_homography_fallback(
         self,
         image: np.ndarray,
         homography_matrix: Optional[np.ndarray] = None,
         reference_regions: Optional[List[Dict[str, Any]]] = None,
+        monument_id: Optional[str] = None,
+        db: Optional[Session] = None,
     ) -> List[Dict[str, Any]]:
-        """Segment architectural components and project reference regions onto query image.
-
-        # TODO: Upgrade to SAM (Segment Anything Model) + OpenCLIP zero-shot segmentation
-        # (Module AI Upgrade in app/ai/sam_segmenter.py & app/ai/region_classifier.py).
-
-        Current homography-projection baseline:
-            Projects predefined reference bounding boxes (pillar, arch, facade, dome, frieze)
-            from reference monument space into query image coordinate space using the inverse
-            homography transformation matrix.
-
-        Args:
-            image: Query image array.
-            homography_matrix: 3x3 homography mapping query image -> reference image.
-            reference_regions: Optional list of architectural region definitions.
-
-        Returns:
-            List[Dict[str, Any]]: List of projected regions with region_id, name,
-                category, bbox [x, y, w, h], and polygon coordinates.
-        """
+        """Fallback method: project reference regions onto query image via inverse homography."""
         if image is None or image.size == 0:
             return []
 
         img_h, img_w = image.shape[:2]
 
         if not reference_regions:
-            # Default architectural reference zones for monument if not provided
             reference_regions = [
                 {
                     "region_id": 1,
                     "name": "central_facade",
                     "category": "facade",
-                    "bounding_box": [int(img_w * 0.2), int(img_h * 0.2), int(img_w * 0.6), int(img_h * 0.6)],
+                    "bounding_box": [
+                        int(img_w * 0.2),
+                        int(img_h * 0.2),
+                        int(img_w * 0.6),
+                        int(img_h * 0.6),
+                    ],
                 }
             ]
 
-        # Invert homography to project reference coords -> query image coords
         H_inv = None
         if homography_matrix is not None:
             try:
@@ -512,15 +635,14 @@ class ImageIngestionModule:
         projected_regions: List[Dict[str, Any]] = []
 
         for reg in reference_regions:
-            r_id = reg.get("id") or reg.get("region_id", 1)
-            name = reg.get("name", f"region_{r_id}")
+            raw_id = reg.get("id") or reg.get("region_id", 1)
+            name = reg.get("name", f"region_{raw_id}")
             category = reg.get("category", "architectural_component")
             raw_bbox = reg.get("bounding_box") or [0, 0, img_w, img_h]
 
             rx, ry, rw, rh = raw_bbox[:4]
 
             if H_inv is not None:
-                # 4 corners in reference space
                 corners = np.array(
                     [
                         [[rx, ry]],
@@ -539,27 +661,169 @@ class ImageIngestionModule:
 
                     proj_w = max(0.0, max_x - min_x)
                     proj_h = max(0.0, max_y - min_y)
-                    bbox = [round(min_x, 1), round(min_y, 1), round(proj_w, 1), round(proj_h, 1)]
-                    polygon = [[round(float(p[0][0]), 1), round(float(p[0][1]), 1)] for p in projected_pts]
+                    bbox = [int(round(min_x)), int(round(min_y)), int(round(proj_w)), int(round(proj_h))]
+                    polygon = [
+                        [round(float(p[0][0]), 1), round(float(p[0][1]), 1)]
+                        for p in projected_pts
+                    ]
                 except Exception as err:
-                    logger.warning(f"Perspective transform error on region {r_id}: {err}")
-                    bbox = [float(rx), float(ry), float(rw), float(rh)]
+                    logger.warning(f"Perspective transform error on region {raw_id}: {err}")
+                    bbox = [int(rx), int(ry), int(rw), int(rh)]
                     polygon = []
             else:
-                bbox = [float(rx), float(ry), float(rw), float(rh)]
+                bbox = [int(rx), int(ry), int(rw), int(rh)]
                 polygon = []
+
+            # Resolve in DB if session available
+            if db is not None and monument_id is not None:
+                resolved_id = self._resolve_or_create_region(
+                    db=db,
+                    monument_id=monument_id,
+                    region_type=category,
+                    bbox=bbox,
+                    polygon=polygon,
+                )
+            else:
+                resolved_id = raw_id
 
             projected_regions.append(
                 {
-                    "region_id": r_id,
+                    "region_id": resolved_id,
                     "name": name,
                     "category": category,
+                    "region_type": category,
                     "bbox": bbox,
                     "polygon": polygon,
                 }
             )
 
         return projected_regions
+
+    def segment_regions(
+        self,
+        image: np.ndarray,
+        monument_id: Optional[str] = None,
+        db: Optional[Session] = None,
+        homography_matrix: Optional[np.ndarray] = None,
+        reference_regions: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Segment architectural components via SAM + OpenCLIP with DB resolution and homography fallback.
+
+        Pipeline:
+            1. If USE_AI_SEGMENTATION is enabled:
+               a) Calls SAMSegmenter.generate_masks(image) to generate noise-filtered masks.
+               b) Calls CLIPRegionClassifier.classify_masks(image, masks, sam_segmenter)
+                  to extract cleaned, letterboxed crops and zero-shot classify them,
+                  automatically filtering out negative/transient content (people, sky, vegetation).
+               c) Resolves each detected region against existing database Region records
+                  using bounding box IoU (threshold >= 0.5) to avoid duplicate region entries.
+               d) If zero valid regions are detected or if AI models fail, gracefully
+                  falls back without crashing.
+            2. If USE_AI_SEGMENTATION is disabled, executes homography projection fallback.
+
+        Args:
+            image: Input photo as BGR or RGB OpenCV array.
+            monument_id: Unique monument string identifier.
+            db: Optional database session for Region persistence and IoU resolution.
+            homography_matrix: Optional 3x3 homography matrix for fallback.
+            reference_regions: Optional architectural region templates for fallback.
+
+        Returns:
+            List[Dict[str, Any]]: Standardized list of region dictionaries containing
+                region_id, name, category, region_type, bbox [x, y, w, h], and confidence_score.
+        """
+        if image is None or image.size == 0:
+            return []
+
+        if self.use_ai_segmentation:
+            try:
+                # Ensure model singletons are assigned
+                if self.sam_segmenter is None:
+                    self.sam_segmenter = get_sam_segmenter()
+                if self.region_classifier is None:
+                    self.region_classifier = get_region_classifier()
+
+                # a) Generate fine-grained SAM masks
+                masks = self.sam_segmenter.generate_masks(image)
+                if not masks:
+                    logger.warning(
+                        "SAM generated 0 masks. Falling back to homography-based projection."
+                    )
+                    return self._segment_regions_homography_fallback(
+                        image=image,
+                        homography_matrix=homography_matrix,
+                        reference_regions=reference_regions,
+                        monument_id=monument_id,
+                        db=db,
+                    )
+
+                # b) Classify masks with OpenCLIP (negative classes dropped)
+                classified_masks = self.region_classifier.classify_masks(
+                    image=image,
+                    masks=masks,
+                    sam_segmenter=self.sam_segmenter,
+                )
+
+                if not classified_masks:
+                    logger.warning(
+                        "All SAM masks were classified as non-structural/negative objects. "
+                        "Returning empty regions list."
+                    )
+                    return []
+
+                # c) Resolve Region IDs and build output list
+                result_regions: List[Dict[str, Any]] = []
+                for idx, item in enumerate(classified_masks):
+                    bbox = item["bbox"]
+                    region_type = item["region_type"]
+                    conf = item.get("confidence_score", 1.0)
+                    all_scores = item.get("all_scores", {})
+
+                    if db is not None and monument_id is not None:
+                        region_id = self._resolve_or_create_region(
+                            db=db,
+                            monument_id=monument_id,
+                            region_type=region_type,
+                            bbox=bbox,
+                        )
+                    else:
+                        region_id = idx + 1
+
+                    result_regions.append(
+                        {
+                            "region_id": region_id,
+                            "name": f"{region_type}_{region_id}",
+                            "category": region_type,
+                            "region_type": region_type,
+                            "bbox": bbox,
+                            "confidence_score": conf,
+                            "all_scores": all_scores,
+                        }
+                    )
+
+                return result_regions
+
+            except Exception as ai_err:
+                logger.warning(
+                    f"AI segmentation failed with error: {ai_err}. "
+                    "Falling back to homography-based projection."
+                )
+                return self._segment_regions_homography_fallback(
+                    image=image,
+                    homography_matrix=homography_matrix,
+                    reference_regions=reference_regions,
+                    monument_id=monument_id,
+                    db=db,
+                )
+
+        # Non-AI homography fallback path
+        return self._segment_regions_homography_fallback(
+            image=image,
+            homography_matrix=homography_matrix,
+            reference_regions=reference_regions,
+            monument_id=monument_id,
+            db=db,
+        )
 
     # -------------------------------------------------------------------------
     # 5. Full Pipeline Orchestration (Ingest)
@@ -581,7 +845,7 @@ class ImageIngestionModule:
             2. Quality assessment (sharpness, glare, resolution).
             3. EXIF metadata extraction (GPS, timestamp, hardware).
             4. ORB keypoint matching & RANSAC homography registration.
-            5. Architectural region segmentation projection.
+            5. Architectural region segmentation (SAM + CLIP / Fallback) with DB resolution.
             6. Database persistence into Observation ORM record.
 
         Args:
@@ -611,48 +875,66 @@ class ImageIngestionModule:
         exif_dict = self.extract_exif(image_bytes)
         exif_schema = EXIFMetadata(**exif_dict)
 
-        # 4. Registration & segmentation
+        # 4. Registration & Segmentation
         matched_region_id: Optional[int] = None
         registration_confidence: Optional[float] = None
         homography_matrix: Optional[np.ndarray] = None
 
-        if reference_image is not None and quality["is_valid_quality"]:
-            reg_res = self.register_image(cv2_img, reference_image)
-            if reg_res["registration_success"]:
-                homography_matrix = reg_res["homography_matrix"]
-                registration_confidence = reg_res["confidence_score"]
+        if quality["is_valid_quality"]:
+            # Feature registration against reference baseline
+            if reference_image is not None:
+                reg_res = self.register_image(cv2_img, reference_image)
+                if reg_res["registration_success"]:
+                    homography_matrix = reg_res["homography_matrix"]
+                    registration_confidence = reg_res["confidence_score"]
+
+            # Segmentation with robust failure handling
+            try:
                 regions = self.segment_regions(
-                    cv2_img,
+                    image=cv2_img,
+                    monument_id=monument_id,
+                    db=db,
                     homography_matrix=homography_matrix,
                     reference_regions=reference_regions,
                 )
                 if regions:
                     matched_region_id = regions[0]["region_id"]
+            except Exception as seg_err:
+                logger.error(f"Error during region segmentation pass: {seg_err}")
+                regions = []
+                matched_region_id = None
 
         # Default fallback image URL
         resolved_image_url = image_url or f"uploads/{monument_id}_{uuid.uuid4().hex[:8]}.jpg"
         captured_timestamp = exif_dict.get("timestamp") or datetime.now(timezone.utc)
 
         # 5. Database Persistence
-        observation_id = 1
+        observation_id = uuid.uuid4()
         if db is not None:
             try:
+                monument_uuid = self._resolve_monument_uuid(monument_id, db=db)
                 # Prepare JSON-safe serialization of exif_dict
                 exif_json_safe = {
                     k: v.isoformat() if isinstance(v, datetime) else v
                     for k, v in exif_dict.items()
                 }
                 obs_record = Observation(
-                    monument_id=monument_id,
+                    monument_id=monument_uuid,
                     user_id=user_id,
                     image_url=resolved_image_url,
-                    blur_score=quality["blur_score"],
-                    glare_score=quality["glare_score"],
-                    resolution_w=quality["resolution_w"],
-                    resolution_h=quality["resolution_h"],
-                    exif_metadata=exif_json_safe,
-                    reliability_score=quality["overall_quality_score"],
-                    region_id=matched_region_id,
+                    blur_score=quality.get("blur_score"),
+                    sharpness_score=quality.get("sharpness_score"),
+                    glare_score=quality.get("glare_score"),
+                    exposure_score=quality.get("exposure_score"),
+                    overall_quality_score=quality.get("overall_quality_score"),
+                    is_valid_quality=quality.get("is_valid_quality", True),
+                    resolution_width=quality.get("resolution_w"),
+                    resolution_height=quality.get("resolution_h"),
+                    exif_data=exif_json_safe,
+                    registration_success=bool(registration_confidence is not None and registration_confidence > 0),
+                    registration_confidence=registration_confidence,
+                    reliability_score=quality.get("overall_quality_score"),
+                    region_id=matched_region_id if isinstance(matched_region_id, uuid.UUID) else None,
                     captured_at=captured_timestamp,
                     created_at=datetime.now(timezone.utc),
                 )
@@ -722,7 +1004,6 @@ class ImageIngestionModule:
         cls, gps_data: Dict[Any, Any]
     ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
         """Parse EXIF GPSInfo tags and convert DMS coordinates to decimal degrees."""
-        # Map numeric IDs to names if needed
         named_gps: Dict[str, Any] = {}
         for key, val in gps_data.items():
             tag_name = ExifTags.GPSTAGS.get(key, key)
