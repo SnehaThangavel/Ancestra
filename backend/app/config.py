@@ -1,6 +1,6 @@
 """Application configuration and environment settings."""
 
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,11 +17,23 @@ class Settings(BaseSettings):
     # Server Configuration
     HOST: str = "0.0.0.0"
     PORT: int = 8000
-    CORS_ORIGINS: List[str] = ["*"]
+    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:8000", "*"]
+    FRONTEND_URL: str = "http://localhost:5173"
 
     # Database Configuration (PostgreSQL)
     DATABASE_URL: str = "postgresql://ancestra_user:ancestra_password@localhost:5432/ancestra_db"
     TEST_DATABASE_URL: str = "postgresql://ancestra_user:ancestra_password@localhost:5432/ancestra_test_db"
+
+    # Google OAuth Configuration (loaded from environment / .env)
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_ALLOWED_DOMAIN: Optional[str] = None
+
+    # JWT Authentication Settings
+    JWT_SECRET_KEY: str = "ancestra_super_secret_jwt_key_development_2026_change_in_prod"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # AI Model Settings (SAM & CLIP)
     SAM_CHECKPOINT_PATH: str = "app/ai/model_weights/sam_vit_b_01ec64.pth"

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import Base, engine
 from app.routers import (
+    auth_router,
     ingestion_router,
     consensus_router,
     validation_router,
@@ -17,7 +18,7 @@ from app.utils.logging import setup_logging
 # Initialize logging
 setup_logging()
 
-# Create DB tables if dev/sqlite
+# Create DB tables if dev/test
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -29,16 +30,23 @@ app = FastAPI(
     redoc_url=f"{settings.API_V1_STR}/redoc",
 )
 
-# CORS middleware configuration
+# CORS middleware configuration allowing frontend origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register SESCI Module Routers
+# Register Authentication and SESCI Module Routers
+app.include_router(auth_router)
+app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(ingestion_router, prefix=settings.API_V1_STR)
 app.include_router(consensus_router, prefix=settings.API_V1_STR)
 app.include_router(validation_router, prefix=settings.API_V1_STR)

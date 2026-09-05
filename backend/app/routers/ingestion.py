@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, s
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.user import User
+from app.auth.dependencies import get_current_user
 from app.modules.ingestion import ImageIngestionModule
 from app.schemas.ingestion import ImageIngestionResponse
 
@@ -20,6 +22,7 @@ async def upload_observation(
     user_id: Optional[str] = Form(None, description="Crowdsource contributor ID"),
     file: UploadFile = File(..., description="Monument photo file"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Upload crowdsourced monument photo for quality triage, EXIF extraction, and ORB registration."""
     try:
@@ -30,10 +33,12 @@ async def upload_observation(
                 detail="Uploaded file is empty.",
             )
 
+        effective_user = user_id or current_user.email
+
         response = ingestion_service.ingest(
             image_bytes=image_bytes,
             monument_id=monument_id,
-            user_id=user_id,
+            user_id=effective_user,
             db=db,
             image_url=file.filename,
         )
