@@ -32,7 +32,7 @@ async def login(request: Request):
     """Redirect user to Google's OAuth 2.0 consent screen."""
     # Ensure redirect URI matches backend callback
     redirect_uri = f"{str(request.base_url).rstrip('/')}/auth/callback"
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    return await oauth.google.authorize_redirect(request, redirect_uri, prompt="select_account")
 
 
 @router.get("/callback", name="auth_callback", summary="Google OAuth 2.0 Callback Handshake")
@@ -119,9 +119,9 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
     access_token = create_access_token(user_id=user.id, email=user.email)
     refresh_token = create_refresh_token(user_id=user.id)
 
-    # Top-level browser redirect to frontend with tokens as URL query parameters
+    # Top-level browser redirect to frontend callback handler with tokens
     frontend_target = (
-        f"{settings.FRONTEND_URL}?access_token={access_token}&refresh_token={refresh_token}"
+        f"{settings.FRONTEND_URL.rstrip('/')}/auth/callback?access_token={access_token}&refresh_token={refresh_token}"
     )
     return RedirectResponse(url=frontend_target)
 

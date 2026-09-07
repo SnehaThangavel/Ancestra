@@ -116,7 +116,15 @@ export function Sidebar() {
       >
         <div style={styles.profileInfo}>
           <div style={styles.avatarCircle}>
-            <UserCheck size={14} color="#A04022" />
+            {currentUser?.picture_url ? (
+              <img
+                src={currentUser.picture_url}
+                alt={currentUser.name || "User Avatar"}
+                style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
+              />
+            ) : (
+              <UserCheck size={14} color="#A04022" />
+            )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={styles.userName}>{currentUser?.name || "Dr. A. Sharma"}</div>

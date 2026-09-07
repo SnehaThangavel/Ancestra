@@ -53,7 +53,8 @@ export function ImageAnalysisPage() {
       captureDate,
       sensorSpec,
       notes: observationNotes,
-      imageUrl: selectedImageData.url
+      imageUrl: selectedImageData.url,
+      imageFile: selectedImageData.file
     });
 
     navigate("/expert/ai-analysis");
