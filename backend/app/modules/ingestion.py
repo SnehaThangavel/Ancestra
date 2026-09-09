@@ -23,6 +23,8 @@ from app.models.observation import Observation
 from app.models.region import Region
 from app.schemas.ingestion import EXIFMetadata, ImageIngestionResponse
 from app.ai import SAMSegmenter, CLIPRegionClassifier, get_sam_segmenter, get_region_classifier
+from app.modules.reliability_engine import ReliabilityEngineModule, get_reliability_engine
+from app.modules.consensus_memory import ConsensusMemoryModule, get_consensus_memory
 from app.utils.image_utils import (
     compute_laplacian_variance,
     detect_glare_ratio,
@@ -51,6 +53,8 @@ class ImageIngestionModule:
         region_classifier: Optional[CLIPRegionClassifier] = None,
         use_ai_segmentation: Optional[bool] = None,
         iou_threshold: Optional[float] = None,
+        reliability_engine: Optional[ReliabilityEngineModule] = None,
+        consensus_memory: Optional[ConsensusMemoryModule] = None,
     ) -> None:
         """Initialize the Image Ingestion module with configurable thresholds and AI models.
 
@@ -67,6 +71,8 @@ class ImageIngestionModule:
             region_classifier: Injected CLIPRegionClassifier instance.
             use_ai_segmentation: Flag to toggle AI segmentation vs homography fallback.
             iou_threshold: IoU overlap threshold for matching existing database regions.
+            reliability_engine: Injected ReliabilityEngineModule for automated reliability scoring.
+            consensus_memory: Injected ConsensusMemoryModule for automated consensus memory updates.
         """
         self.min_width = min_width or getattr(settings, "MIN_IMAGE_WIDTH", 400)
         self.min_height = min_height or getattr(settings, "MIN_IMAGE_HEIGHT", 300)
@@ -93,6 +99,12 @@ class ImageIngestionModule:
 
         self.sam_segmenter = sam_segmenter
         self.region_classifier = region_classifier
+        self.reliability_engine = (
+            reliability_engine if reliability_engine is not None else get_reliability_engine()
+        )
+        self.consensus_memory = (
+            consensus_memory if consensus_memory is not None else get_consensus_memory()
+        )
 
         # Initialize reusable ORB feature detector
         self.orb = cv2.ORB_create(
@@ -494,6 +506,18 @@ class ImageIngestionModule:
             return 0.0
 
         return float(inter_area / union_area)
+
+    @staticmethod
+    def _resolve_uuid_or_none(val: Any) -> Optional[uuid.UUID]:
+        """Safely convert value to UUID or return None."""
+        if val is None:
+            return None
+        if isinstance(val, uuid.UUID):
+            return val
+        try:
+            return uuid.UUID(str(val))
+        except (ValueError, AttributeError):
+            return None
 
     @staticmethod
     def _resolve_monument_uuid(monument_id: Union[uuid.UUID, str], db: Optional[Session] = None) -> uuid.UUID:
@@ -934,7 +958,7 @@ class ImageIngestionModule:
                     registration_success=bool(registration_confidence is not None and registration_confidence > 0),
                     registration_confidence=registration_confidence,
                     reliability_score=quality.get("overall_quality_score"),
-                    region_id=matched_region_id if isinstance(matched_region_id, uuid.UUID) else None,
+                    region_id=self._resolve_uuid_or_none(matched_region_id),
                     captured_at=captured_timestamp,
                     created_at=datetime.now(timezone.utc),
                 )
@@ -942,6 +966,25 @@ class ImageIngestionModule:
                 db.commit()
                 db.refresh(obs_record)
                 observation_id = obs_record.id
+
+                # Auto-score reliability using injected ReliabilityEngineModule (Module 2)
+                if self.reliability_engine is not None:
+                    try:
+                        self.reliability_engine.compute_reliability(obs_record, db=db)
+                    except Exception as rel_err:
+                        logger.warning(f"Automatic reliability computation error: {rel_err}")
+
+                # Auto-update consensus memory using injected ConsensusMemoryModule (Module 3)
+                if self.consensus_memory is not None:
+                    if obs_record.region_id is not None:
+                        try:
+                            self.consensus_memory.process_observation(obs_record, db=db, image=cv2_img)
+                        except Exception as cons_err:
+                            logger.warning(f"Automatic consensus memory update error: {cons_err}")
+                    else:
+                        logger.warning(
+                            "Observation has no matched_region_id; skipping automatic consensus memory update."
+                        )
             except Exception as err:
                 db.rollback()
                 logger.error(f"Database error saving observation: {err}")

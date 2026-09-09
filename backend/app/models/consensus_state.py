@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, CheckConstraint
+from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey, CheckConstraint, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -19,6 +19,7 @@ class ConsensusState(Base):
             "structural_health_index >= 0.0 AND structural_health_index <= 1.0",
             name="check_structural_health_index",
         ),
+        UniqueConstraint("region_id", "version", name="uq_consensus_states_region_version"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -33,6 +34,12 @@ class ConsensusState(Base):
     cumulative_reliability = Column(Float, default=0.0, nullable=False)
     observation_count = Column(Integer, default=0, nullable=False)
     structural_health_index = Column(Float, default=1.0, nullable=False)  # 1.0 (pristine) -> 0.0 (critical)
+    last_updated_by_observation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("observations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reset_reason = Column(String(512), nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -49,6 +56,7 @@ class ConsensusState(Base):
 
     # Relationships
     region = relationship("Region", back_populates="consensus_states")
+    last_updated_by_observation = relationship("Observation", foreign_keys=[last_updated_by_observation_id])
 
     # Compatibility properties
     @property

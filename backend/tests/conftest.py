@@ -29,9 +29,11 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_database():
     """Create all tables in the test database before running tests."""
+    Base.metadata.drop_all(bind=test_engine)
     Base.metadata.create_all(bind=test_engine)
     yield
-    # Keep tables for subsequent test runs
+    # Keep tables for inspection
+
 
 
 @pytest.fixture

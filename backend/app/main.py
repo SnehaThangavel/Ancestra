@@ -1,7 +1,16 @@
 """FastAPI application entrypoint for Ancestra Heritage Structural Monitoring Backend."""
 
+import os
+import sys
+
+# Ensure backend root is on sys.path even when running directly
+backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if backend_root not in sys.path:
+    sys.path.insert(0, backend_root)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
@@ -9,6 +18,7 @@ from app.database import Base, engine
 from app.routers import (
     auth_router,
     ingestion_router,
+    reliability_router,
     consensus_router,
     validation_router,
     temporal_router,
@@ -26,9 +36,9 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="SESCI Architecture for Crowdsourced Monument Structural Monitoring",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    docs_url=f"{settings.API_V1_STR}/docs",
-    redoc_url=f"{settings.API_V1_STR}/redoc",
+    openapi_url="/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # SessionMiddleware required by Authlib for transient OAuth CSRF state verification
@@ -56,10 +66,23 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(ingestion_router, prefix=settings.API_V1_STR)
+app.include_router(reliability_router, prefix=settings.API_V1_STR)
 app.include_router(consensus_router, prefix=settings.API_V1_STR)
 app.include_router(validation_router, prefix=settings.API_V1_STR)
 app.include_router(temporal_router, prefix=settings.API_V1_STR)
 app.include_router(orchestrator_router, prefix=settings.API_V1_STR)
+
+
+@app.get(f"{settings.API_V1_STR}/docs", include_in_schema=False)
+async def api_v1_docs_redirect():
+    """Redirect /api/v1/docs to /docs for developer convenience."""
+    return RedirectResponse(url="/docs")
+
+
+@app.get(f"{settings.API_V1_STR}/openapi.json", include_in_schema=False)
+async def api_v1_openapi_redirect():
+    """Redirect /api/v1/openapi.json to /openapi.json for compatibility."""
+    return RedirectResponse(url="/openapi.json")
 
 
 @app.get("/", tags=["Health"])

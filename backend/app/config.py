@@ -1,6 +1,7 @@
 """Application configuration and environment settings."""
 
-from typing import List, Optional
+from typing import Dict, List, Optional
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -83,6 +84,37 @@ class Settings(BaseSettings):
     ORB_MAX_FEATURES: int = 2000
     MIN_MATCH_COUNT: int = 8
     RANSAC_REPROJ_THRESHOLD: float = 5.0
+
+    # Reliability Engine Settings (Module 2)
+    RELIABILITY_TEMPORAL_HALF_LIFE_DAYS: float = 180.0
+    RELIABILITY_WEIGHTS: Dict[str, float] = {
+        "image_quality": 0.25,
+        "geometric_consistency": 0.20,
+        "viewpoint_diversity": 0.10,
+        "temporal_relevance": 0.15,
+        "environmental_similarity": 0.10,
+        "agreement": 0.20,
+    }
+
+    @field_validator("RELIABILITY_WEIGHTS")
+    @classmethod
+    def validate_reliability_weights(cls, v: Dict[str, float]) -> Dict[str, float]:
+        """Validate that reliability factor weights sum approximately to 1.0."""
+        required_factors = {
+            "image_quality",
+            "geometric_consistency",
+            "viewpoint_diversity",
+            "temporal_relevance",
+            "environmental_similarity",
+            "agreement",
+        }
+        missing = required_factors - set(v.keys())
+        if missing:
+            raise ValueError(f"Missing required reliability factor weight(s): {missing}")
+        total = sum(v.values())
+        if abs(total - 1.0) > 1e-4:
+            raise ValueError(f"Reliability weights must sum to 1.0, got {total}")
+        return v
 
     model_config = SettingsConfigDict(
         env_file=".env",
