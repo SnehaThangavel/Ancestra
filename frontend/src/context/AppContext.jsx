@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import {
   mockHeritageSites,
   mockArchitecturalRegions,
@@ -6,6 +6,7 @@ import {
   mockReports,
   mockNotifications
 } from "../data/mockData";
+import { api, getAccessToken, getRefreshToken, setTokens, clearTokens } from "../services/api";
 
 const AppContext = createContext();
 
@@ -19,7 +20,92 @@ export function AppProvider({ children }) {
     role: "CONSERVATION_EXPERT" // "CONSERVATION_EXPERT" or "ADMINISTRATOR"
   });
 
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!getAccessToken());
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  // Initialize Auth from stored JWT session, URL params, or backend on mount
+  useEffect(() => {
+    async function initAuth() {
+      // 1. Check if tokens arrived in URL search params (?access_token=...&refresh_token=...)
+      const searchParams = new URLSearchParams(window.location.search);
+      let incomingAccessToken = searchParams.get("access_token");
+      let incomingRefreshToken = searchParams.get("refresh_token");
+
+      // 2. Check if tokens arrived in URL hash (#access_token=...&refresh_token=...)
+      if (!incomingAccessToken && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        incomingAccessToken = hashParams.get("access_token");
+        incomingRefreshToken = hashParams.get("refresh_token");
+      }
+
+      if (incomingAccessToken) {
+        setTokens(incomingAccessToken, incomingRefreshToken);
+        // Clean URL to prevent tokens from remaining visible in browser address bar
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+
+      const token = getAccessToken();
+      if (token) {
+        try {
+          const userProfile = await api.getMe();
+          if (userProfile && userProfile.email) {
+            const isAdm =
+              userProfile.email.toLowerCase().includes("admin") ||
+              userProfile.email.toLowerCase().includes("ranganathan");
+            setCurrentUser({
+              id: userProfile.id,
+              name: userProfile.name || userProfile.email.split("@")[0],
+              email: userProfile.email,
+              picture_url: userProfile.picture_url,
+              title: isAdm ? "Director General (ASI)" : "Lead Conservator (ASI)",
+              role: isAdm ? "ADMINISTRATOR" : "CONSERVATION_EXPERT",
+              is_active: userProfile.is_active,
+              isGoogleUser: true
+            });
+            setIsAuthenticated(true);
+          }
+        } catch (err) {
+          console.warn("Saved token verification failed, attempting refresh:", err);
+          const refreshToken = getRefreshToken();
+          if (refreshToken) {
+            try {
+              const refreshed = await api.refreshToken(refreshToken);
+              if (refreshed && refreshed.access_token) {
+                const userProfile = await api.getMe();
+                const isAdm =
+                  userProfile.email.toLowerCase().includes("admin") ||
+                  userProfile.email.toLowerCase().includes("ranganathan");
+                setCurrentUser({
+                  id: userProfile.id,
+                  name: userProfile.name || userProfile.email.split("@")[0],
+                  email: userProfile.email,
+                  picture_url: userProfile.picture_url,
+                  title: isAdm ? "Director General (ASI)" : "Lead Conservator (ASI)",
+                  role: isAdm ? "ADMINISTRATOR" : "CONSERVATION_EXPERT",
+                  is_active: userProfile.is_active,
+                  isGoogleUser: true
+                });
+                setIsAuthenticated(true);
+              }
+            } catch (refErr) {
+              console.warn("Token refresh attempt failed:", refErr);
+              clearTokens();
+              setIsAuthenticated(false);
+            }
+          } else {
+            clearTokens();
+            setIsAuthenticated(false);
+          }
+        }
+      } else {
+        setIsAuthenticated(false);
+      }
+      setIsAuthLoading(false);
+    }
+
+    initAuth();
+  }, []);
 
   // Application Global Core State
   const [heritageSites, setHeritageSites] = useState(mockHeritageSites);
@@ -72,6 +158,41 @@ export function AppProvider({ children }) {
   };
 
   // Auth Handlers
+  const loginWithGoogle = () => {
+    window.location.href = api.getGoogleLoginUrl();
+  };
+
+  const handleAuthCallback = async (accessToken, refreshToken) => {
+    try {
+      setTokens(accessToken, refreshToken);
+      const userProfile = await api.getMe();
+      if (userProfile && userProfile.email) {
+        const isAdm =
+          userProfile.email.toLowerCase().includes("admin") ||
+          userProfile.email.toLowerCase().includes("ranganathan");
+        const mappedUser = {
+          id: userProfile.id,
+          name: userProfile.name || userProfile.email.split("@")[0],
+          email: userProfile.email,
+          picture_url: userProfile.picture_url,
+          title: isAdm ? "Director General (ASI)" : "Lead Conservator (ASI)",
+          role: isAdm ? "ADMINISTRATOR" : "CONSERVATION_EXPERT",
+          is_active: userProfile.is_active,
+          isGoogleUser: true
+        };
+        setCurrentUser(mappedUser);
+        setIsAuthenticated(true);
+        showToast(`Welcome, ${mappedUser.name}! Signed in via Google.`);
+        return { success: true, user: mappedUser };
+      }
+      throw new Error("Unable to retrieve user profile from backend.");
+    } catch (err) {
+      clearTokens();
+      setIsAuthenticated(false);
+      return { success: false, message: err.message || "Failed to authenticate session." };
+    }
+  };
+
   const login = (email, password) => {
     if (email.includes("admin") || email.includes("ranganathan")) {
       const user = {
@@ -114,13 +235,19 @@ export function AppProvider({ children }) {
     return { success: true, user: newUser };
   };
 
-  const logout = () => {
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-    showToast("Logged out successfully.");
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch (e) {
+      console.warn("Backend logout request notice:", e);
+    } finally {
+      clearTokens();
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+      showToast("Logged out successfully.");
+    }
   };
 
-  // Profile Update & Reset Password Handlers
   const updateUserProfile = (updatedData) => {
     setCurrentUser((prev) => ({
       ...prev,
@@ -444,6 +571,9 @@ export function AppProvider({ children }) {
       value={{
         currentUser,
         isAuthenticated,
+        isAuthLoading,
+        loginWithGoogle,
+        handleAuthCallback,
         login,
         registerUser,
         logout,

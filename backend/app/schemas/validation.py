@@ -1,23 +1,24 @@
 """Pydantic schemas for SSIM anomaly detection and consensus validation."""
 
+import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field
 
 
 class AnomalyValidationRequest(BaseModel):
     """Request schema to trigger anomaly validation against regional consensus."""
 
-    observation_id: int
-    region_id: int
+    observation_id: Union[uuid.UUID, int, str]
+    region_id: Union[uuid.UUID, int, str]
     ssim_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
 
 
 class AnomalyValidationResponse(BaseModel):
     """Response schema for validated structural anomalies."""
 
-    validation_id: int
-    region_id: int
+    validation_id: Union[uuid.UUID, int, str]
+    region_id: Union[uuid.UUID, int, str]
     anomaly_detected: bool
     anomaly_type: Optional[str] = None
     ssim_delta: Optional[float] = None

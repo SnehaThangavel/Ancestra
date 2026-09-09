@@ -3,26 +3,55 @@ import { useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 import { AIProgress } from "../../components/expert/AIProgress";
 import { analyzeHeritageImage } from "../../services/mockAIService";
+import { api } from "../../services/api";
 import { Sparkles } from "lucide-react";
 
 export function AIAnalysisPage() {
   const navigate = useNavigate();
-  const { pendingAnalysis, recordAssessmentResult, isPipelineComplete } = useApp();
+  const { pendingAnalysis, recordAssessmentResult, isPipelineComplete, isAuthenticated } = useApp();
 
   const imageSrc =
     pendingAnalysis?.imageUrl ||
     "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800";
 
   useEffect(() => {
-    analyzeHeritageImage({
-      siteId: pendingAnalysis?.siteId,
-      siteName: pendingAnalysis?.siteName,
-      regionId: pendingAnalysis?.regionId,
-      regionName: pendingAnalysis?.regionName,
-      imagePreviewUrl: imageSrc
-    }).then((result) => {
+    async function executeAnalysis() {
+      // 1. If real file is provided and user is authenticated, submit to backend
+      let backendObservation = null;
+      if (pendingAnalysis?.imageFile && isAuthenticated) {
+        try {
+          backendObservation = await api.uploadObservation({
+            monumentId: pendingAnalysis.siteId || "a0000000-0000-0000-0000-000000000001",
+            imageFile: pendingAnalysis.imageFile,
+            metadata: {
+              region_id: pendingAnalysis.regionId,
+              capture_date: pendingAnalysis.captureDate,
+              sensor_spec: pendingAnalysis.sensorSpec,
+              notes: pendingAnalysis.notes,
+            },
+          });
+        } catch (apiErr) {
+          console.warn("Backend observation upload notice (falling back to local AI service):", apiErr);
+        }
+      }
+
+      // 2. Perform perceptual analysis & damage segmentation
+      const result = await analyzeHeritageImage({
+        siteId: pendingAnalysis?.siteId,
+        siteName: pendingAnalysis?.siteName,
+        regionId: pendingAnalysis?.regionId,
+        regionName: pendingAnalysis?.regionName,
+        imagePreviewUrl: imageSrc,
+      });
+
+      if (backendObservation?.id) {
+        result.observationId = backendObservation.id;
+      }
+
       recordAssessmentResult(result);
-    });
+    }
+
+    executeAnalysis();
   }, []);
 
   const handleNavigateResults = () => {

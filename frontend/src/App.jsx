@@ -5,6 +5,7 @@ import { AppShell } from "./components/layout/AppShell";
 
 // Pages
 import { LoginPage } from "./pages/LoginPage";
+import { AuthCallback } from "./pages/AuthCallback";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ImageAnalysisPage } from "./pages/expert/ImageAnalysisPage";
 import { AIAnalysisPage } from "./pages/expert/AIAnalysisPage";
@@ -17,7 +18,18 @@ import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 
 function ProtectedRoutes() {
-  const { isAuthenticated } = useApp();
+  const { isAuthenticated, isAuthLoading } = useApp();
+
+  if (isAuthLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "var(--bg-app)" }}>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-muted)", letterSpacing: "0.08em" }}>
+          INITIALIZING WORKSPACE...
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
@@ -30,6 +42,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
 
           <Route element={<ProtectedRoutes />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

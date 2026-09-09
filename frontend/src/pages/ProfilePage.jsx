@@ -72,20 +72,33 @@ export function ProfilePage() {
       {/* Profile Overview Card */}
       <div className="ancestra-card" style={styles.headerCard}>
         <div style={styles.avatarLarge}>
-          <UserCheck size={28} color="#A04022" />
+          {currentUser?.picture_url ? (
+            <img
+              src={currentUser.picture_url}
+              alt={currentUser.name || "User Avatar"}
+              style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
+            />
+          ) : (
+            <UserCheck size={28} color="#A04022" />
+          )}
         </div>
         <div>
           <h2 className="font-serif-heading" style={{ fontSize: "18px", margin: "0 0 2px 0" }}>
             {currentUser?.name}
           </h2>
           <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "6px" }}>
-            {currentUser?.title}
+            {currentUser?.title || "Conservation Specialist"}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <span style={styles.roleReadonlyBadge}>
               <ShieldCheck size={12} color="#A04022" />
               <span>ROLE: {isExpert ? "CONSERVATION EXPERT" : "ADMINISTRATOR"}</span>
             </span>
+            {currentUser?.isGoogleUser && (
+              <span style={{ ...styles.roleReadonlyBadge, backgroundColor: "#EBF5FF", borderColor: "rgba(66, 133, 244, 0.3)", color: "#1E40AF" }}>
+                <span>GOOGLE OAUTH 2.0 VERIFIED</span>
+              </span>
+            )}
           </div>
         </div>
       </div>
