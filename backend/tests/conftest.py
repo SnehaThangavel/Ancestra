@@ -17,6 +17,8 @@ from app.main import app
 
 # Ensure tests use the PostgreSQL test database
 TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", settings.TEST_DATABASE_URL)
+if TEST_DB_URL.startswith("postgresql://"):
+    TEST_DB_URL = TEST_DB_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 test_engine = create_engine(
     TEST_DB_URL,

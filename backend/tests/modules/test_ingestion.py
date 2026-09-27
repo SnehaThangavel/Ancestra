@@ -374,3 +374,127 @@ def test_ingest_orchestration_with_db(ingestion_module, in_memory_db) -> None:
     assert db_record.blur_score == response.blur_score
     assert db_record.glare_score == response.glare_score
     assert db_record.sharpness_score == response.blur_score or db_record.sharpness_score is not None
+
+
+def test_suggest_region_with_available_regions_and_no_auto_commit(in_memory_db) -> None:
+    """Test suggest_region returns suggestions and available regions without writing new Region rows."""
+    mock_sam = MagicMock(spec=SAMSegmenter)
+    mock_clip = MagicMock(spec=CLIPRegionClassifier)
+
+    module = ImageIngestionModule(
+        sam_segmenter=mock_sam,
+        region_classifier=mock_clip,
+        use_ai_segmentation=True,
+    )
+
+    monument_uuid = module._resolve_monument_uuid("MONUMENT_SUGGEST_TEST", db=in_memory_db)
+
+    # Pre-populate 2 regions in DB
+    reg1 = Region(
+        monument_id=monument_uuid,
+        name="North Wall Facade",
+        category="masonry wall facade",
+        bounding_box=[100, 100, 200, 200],
+    )
+    reg2 = Region(
+        monument_id=monument_uuid,
+        name="South Pillar Array",
+        category="stone pillar column",
+        bounding_box=[350, 100, 150, 300],
+    )
+    in_memory_db.add_all([reg1, reg2])
+    in_memory_db.commit()
+
+    initial_region_count = in_memory_db.query(Region).filter_by(monument_id=monument_uuid).count()
+    assert initial_region_count == 2
+
+    # Mock AI to detect "masonry wall facade" at [105, 95, 195, 205] (matches reg1)
+    mock_sam.generate_masks.return_value = [{"bbox": [105, 95, 195, 205]}]
+    mock_clip.classify_masks.return_value = [
+        {"bbox": [105, 95, 195, 205], "region_type": "masonry wall facade", "confidence_score": 0.94}
+    ]
+
+    img_arr = _generate_synthetic_monument_image(width=640, height=480)
+    img_bytes = _create_image_bytes_with_exif(img_arr, include_exif=False)
+
+    suggestion = module.suggest_region(
+        image_bytes=img_bytes,
+        monument_id=str(monument_uuid),
+        db=in_memory_db,
+    )
+
+    assert suggestion["monument_id"] == str(monument_uuid)
+    assert suggestion["suggested_region_id"] == str(reg1.id)
+    assert suggestion["suggested_region_name"] == "North Wall Facade"
+    assert suggestion["confidence_score"] >= 0.8
+    assert len(suggestion["available_regions"]) == 2
+
+    # Crucial: verify that suggest_region DID NOT commit any new rows to DB
+    final_region_count = in_memory_db.query(Region).filter_by(monument_id=monument_uuid).count()
+    assert final_region_count == initial_region_count
+
+
+def test_cold_start_baseline_and_sequential_alignment(ingestion_module, in_memory_db) -> None:
+    """Test that first upload is marked baseline, and second upload aligns against the first."""
+    monument_uuid = ingestion_module._resolve_monument_uuid("MONUMENT_SEQ_TEST", db=in_memory_db)
+
+    test_region = Region(
+        monument_id=monument_uuid,
+        name="Sanctuary Tower",
+        category="structural dome roof",
+        bounding_box=[100, 100, 300, 300],
+    )
+    in_memory_db.add(test_region)
+    in_memory_db.commit()
+    in_memory_db.refresh(test_region)
+
+    # 1. Cold Start Observation (First upload for this region)
+    img1_arr = _generate_synthetic_monument_image(width=640, height=480)
+    img1_bytes = _create_image_bytes_with_exif(img1_arr, include_exif=True)
+
+    res1 = ingestion_module.ingest(
+        image_bytes=img1_bytes,
+        monument_id=str(monument_uuid),
+        region_id=str(test_region.id),
+        user_id="expert_user_1",
+        db=in_memory_db,
+    )
+
+    assert res1.matched_region_id == test_region.id
+    assert res1.is_baseline is True
+    assert res1.registration_success is True
+    assert res1.registration_confidence == 1.0
+
+    # 2. Verify get_latest_observation helper
+    latest_obs = ingestion_module.get_latest_observation(in_memory_db, test_region.id)
+    assert latest_obs is not None
+    assert latest_obs.id == res1.observation_id
+
+    # 3. Second Observation (Sequential upload for the same region)
+    img2_arr = _generate_synthetic_monument_image(width=640, height=480)
+    img2_bytes = _create_image_bytes_with_exif(img2_arr, include_exif=True)
+
+    res2 = ingestion_module.ingest(
+        image_bytes=img2_bytes,
+        monument_id=str(monument_uuid),
+        region_id=str(test_region.id),
+        user_id="expert_user_2",
+        db=in_memory_db,
+    )
+
+    assert res2.matched_region_id == test_region.id
+    assert res2.is_baseline is False
+    assert res2.registration_success is True
+    assert res2.observation_id != res1.observation_id
+
+    # 4. Storage sequence check: verify both observations exist ordered by timestamp
+    all_obs = (
+        in_memory_db.query(Observation)
+        .filter(Observation.region_id == test_region.id)
+        .order_by(Observation.created_at.asc())
+        .all()
+    )
+    assert len(all_obs) == 2
+    assert all_obs[0].id == res1.observation_id
+    assert all_obs[1].id == res2.observation_id
+

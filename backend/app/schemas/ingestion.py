@@ -1,8 +1,8 @@
-"""Pydantic schemas for photo ingestion, EXIF parsing, and quality assessment."""
+"""Pydantic schemas for photo ingestion, EXIF parsing, region suggestion, and quality assessment."""
 
 import uuid
 from datetime import datetime
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, List
 from pydantic import BaseModel, Field
 
 
@@ -21,12 +21,34 @@ class EXIFMetadata(BaseModel):
 
 
 class ImageIngestionRequest(BaseModel):
-    """Request schema for initiating crowdsourced photo ingestion."""
+    """Request schema for initiating photo ingestion."""
 
     monument_id: Union[uuid.UUID, str] = Field(..., description="Unique monument identifier")
-    user_id: Optional[str] = Field(None, description="Crowdsource contributor identifier")
+    region_id: Optional[Union[uuid.UUID, str]] = Field(None, description="Explicit region identifier confirmed by expert")
+    user_id: Optional[str] = Field(None, description="Expert or contributor identifier")
     image_base64: Optional[str] = Field(None, description="Base64-encoded image data")
     image_url: Optional[str] = Field(None, description="Direct URL of the uploaded image")
+
+
+class RegionItem(BaseModel):
+    """Summary of an architectural region available for selection."""
+
+    id: Union[uuid.UUID, str]
+    name: str
+    category: Optional[str] = None
+    bounding_box: Optional[Any] = None
+
+
+class RegionSuggestionResponse(BaseModel):
+    """Response schema for AI-assisted region suggestion."""
+
+    monument_id: Union[uuid.UUID, str]
+    suggested_region_id: Optional[Union[uuid.UUID, str]] = None
+    suggested_region_name: Optional[str] = None
+    confidence_score: float = Field(0.0, description="Confidence score of AI region suggestion in [0, 1]")
+    detected_category: Optional[str] = None
+    bounding_box: Optional[List[int]] = None
+    available_regions: List[RegionItem] = Field(default_factory=list, description="All existing regions for dropdown confirmation")
 
 
 class ImageIngestionResponse(BaseModel):
@@ -41,5 +63,7 @@ class ImageIngestionResponse(BaseModel):
     resolution_h: int
     exif: Optional[EXIFMetadata] = None
     matched_region_id: Optional[Union[uuid.UUID, int, str]] = None
+    registration_success: Optional[bool] = False
     registration_confidence: Optional[float] = None
+    is_baseline: Optional[bool] = False
     created_at: datetime

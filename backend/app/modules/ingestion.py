@@ -1,15 +1,15 @@
-"""Module 1: Image Quality Assessment, EXIF Metadata Extraction, and AI Region Segmentation.
+"""Module 1: Image Quality Assessment, EXIF Metadata Extraction, AI Region Suggestion, and Alignment.
 
-SESCI Architecture - Patent Claim Scope:
+SESCI Architecture - Module 1 (Ingestion & Registration):
 Handles image quality validation (Laplacian variance blur, luminance glare/exposure),
 EXIF telemetry parsing (DMS-to-decimal GPS, timestamp, camera make/model),
-ORB keypoint feature matching, RANSAC homography alignment, and zero-shot
-architectural component segmentation (SAM + OpenCLIP) with IoU-based database
-region matching and robust homography fallback.
+AI-assisted architectural region suggestion (SAM + OpenCLIP zero-shot classification),
+and sequential alignment against the most recent prior observation for the target region.
 """
 
 from typing import Dict, Any, Tuple, Optional, List, Union, BinaryIO
 import io
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.observation import Observation
 from app.models.region import Region
-from app.schemas.ingestion import EXIFMetadata, ImageIngestionResponse
+from app.schemas.ingestion import EXIFMetadata, ImageIngestionResponse, RegionItem, RegionSuggestionResponse
 from app.ai import SAMSegmenter, CLIPRegionClassifier, get_sam_segmenter, get_region_classifier
 from app.modules.reliability_engine import ReliabilityEngineModule, get_reliability_engine
 from app.modules.consensus_memory import ConsensusMemoryModule, get_consensus_memory
@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 
 
 class ImageIngestionModule:
-    """Production-grade implementation of Module 1: Image Ingestion & Registration."""
+    """Implementation of Module 1: Image Ingestion, AI Region Suggestion, Quality Assessment & Registration."""
 
     def __init__(
         self,
@@ -71,8 +71,8 @@ class ImageIngestionModule:
             region_classifier: Injected CLIPRegionClassifier instance.
             use_ai_segmentation: Flag to toggle AI segmentation vs homography fallback.
             iou_threshold: IoU overlap threshold for matching existing database regions.
-            reliability_engine: Injected ReliabilityEngineModule for automated reliability scoring.
-            consensus_memory: Injected ConsensusMemoryModule for automated consensus memory updates.
+            reliability_engine: Optional injected ReliabilityEngineModule.
+            consensus_memory: Optional injected ConsensusMemoryModule.
         """
         self.min_width = min_width or getattr(settings, "MIN_IMAGE_WIDTH", 400)
         self.min_height = min_height or getattr(settings, "MIN_IMAGE_HEIGHT", 300)
@@ -340,11 +340,11 @@ class ImageIngestionModule:
     def register_image(
         self, image: np.ndarray, reference_image: np.ndarray
     ) -> Dict[str, Any]:
-        """Register input photo against reference monument image using ORB and RANSAC homography.
+        """Register input photo against reference baseline photo using ORB and RANSAC homography.
 
         Args:
             image: Input query image array (BGR or Grayscale).
-            reference_image: Reference monument baseline image array (BGR or Grayscale).
+            reference_image: Reference baseline image array (BGR or Grayscale).
 
         Returns:
             Dict[str, Any]: Registration success status, homography matrix, and metrics.
@@ -464,22 +464,163 @@ class ImageIngestionModule:
         return None, 0.0, None
 
     # -------------------------------------------------------------------------
-    # 4. Region Segmentation & IoU DB Resolution (SAM + CLIP + Fallback)
+    # 4. Sequential Prior Observation Query Helper
+    # -------------------------------------------------------------------------
+    def get_latest_observation(
+        self, db: Session, region_id: Union[uuid.UUID, str]
+    ) -> Optional[Observation]:
+        """Fetch the most recently stored observation for an architectural region.
+
+        Ordered by created_at desc, captured_at desc.
+        Returns None if this is the first upload for the region (cold start).
+
+        Args:
+            db: Active SQLAlchemy database session.
+            region_id: Architectural region UUID or string identifier.
+
+        Returns:
+            Optional[Observation]: Latest Observation ORM record or None.
+        """
+        region_uuid = self._resolve_uuid_or_none(region_id)
+        if region_uuid is None or db is None:
+            return None
+
+        return (
+            db.query(Observation)
+            .filter(Observation.region_id == region_uuid)
+            .order_by(Observation.created_at.desc(), Observation.captured_at.desc())
+            .first()
+        )
+
+    # -------------------------------------------------------------------------
+    # 5. Region Suggestion (AI-Assist without auto-commit)
+    # -------------------------------------------------------------------------
+    def suggest_region(
+        self,
+        image_bytes: bytes,
+        monument_id: Union[uuid.UUID, str],
+        db: Optional[Session] = None,
+    ) -> Dict[str, Any]:
+        """Run SAM segmentation + OpenCLIP classification to suggest the most likely region.
+
+        Returns the suggested region and the list of available existing regions for expert dropdown confirmation.
+        Does NOT automatically commit a new region or observation to the database.
+
+        Args:
+            image_bytes: Raw bytes of uploaded photograph.
+            monument_id: Monument UUID or identifier string.
+            db: Optional database session to query existing regions.
+
+        Returns:
+            Dict[str, Any]: Structured dictionary conforming to RegionSuggestionResponse schema.
+        """
+        # 1. Decode image
+        try:
+            cv2_img = load_image_cv2(image_bytes)
+        except Exception as err:
+            logger.error(f"Failed to decode image bytes for region suggestion: {err}")
+            raise ValueError(f"Invalid image format or corrupted bytes: {err}") from err
+
+        # 2. Fetch existing regions for this monument from DB
+        monument_uuid = self._resolve_monument_uuid(monument_id, db=db)
+        existing_regions: List[Region] = []
+        if db is not None:
+            existing_regions = (
+                db.query(Region)
+                .filter(Region.monument_id == monument_uuid)
+                .order_by(Region.name.asc())
+                .all()
+            )
+
+        available_regions = [
+            {
+                "id": str(r.id),
+                "name": r.name,
+                "category": r.category,
+                "bounding_box": r.bounding_box,
+            }
+            for r in existing_regions
+        ]
+
+        # 3. Run AI segmentation without persisting new rows to DB
+        suggested_region_id: Optional[str] = None
+        suggested_region_name: Optional[str] = None
+        confidence_score: float = 0.0
+        detected_category: Optional[str] = None
+        bounding_box: Optional[List[int]] = None
+
+        try:
+            detected_regions = self.segment_regions(
+                image=cv2_img,
+                monument_id=str(monument_id),
+                db=None,  # Do not auto-create region rows in suggestion pass
+            )
+
+            if detected_regions:
+                # Select the highest confidence detected region
+                best_detected = max(
+                    detected_regions,
+                    key=lambda r: r.get("confidence_score", 0.0),
+                )
+                detected_category = best_detected.get("category") or best_detected.get("region_type")
+                bounding_box = best_detected.get("bbox")
+                confidence_score = float(best_detected.get("confidence_score", 0.85))
+
+                # Match against existing regions by IoU or Category
+                best_match = None
+                best_iou = 0.0
+                for reg in existing_regions:
+                    if (
+                        reg.bounding_box
+                        and isinstance(reg.bounding_box, (list, tuple))
+                        and len(reg.bounding_box) >= 4
+                        and bounding_box
+                    ):
+                        iou = self._compute_bbox_iou(bounding_box, reg.bounding_box[:4])
+                        if reg.category == detected_category:
+                            iou *= 1.2
+                        if iou > best_iou:
+                            best_iou = iou
+                            best_match = reg
+                    elif reg.category and detected_category and reg.category.lower() == detected_category.lower():
+                        if best_match is None:
+                            best_match = reg
+
+                if best_match is not None:
+                    suggested_region_id = str(best_match.id)
+                    suggested_region_name = best_match.name
+                else:
+                    if existing_regions:
+                        suggested_region_id = str(existing_regions[0].id)
+                        suggested_region_name = existing_regions[0].name
+                    else:
+                        suggested_region_name = best_detected.get("name") or detected_category
+        except Exception as seg_err:
+            logger.warning(f"Error during AI region suggestion pass: {seg_err}")
+            if existing_regions:
+                suggested_region_id = str(existing_regions[0].id)
+                suggested_region_name = existing_regions[0].name
+                confidence_score = 0.5
+
+        return {
+            "monument_id": str(monument_id),
+            "suggested_region_id": suggested_region_id,
+            "suggested_region_name": suggested_region_name,
+            "confidence_score": round(confidence_score, 4),
+            "detected_category": detected_category,
+            "bounding_box": bounding_box,
+            "available_regions": available_regions,
+        }
+
+    # -------------------------------------------------------------------------
+    # 6. Region Segmentation & IoU DB Resolution (SAM + CLIP + Fallback)
     # -------------------------------------------------------------------------
     @staticmethod
     def _compute_bbox_iou(
         box_a: Union[List[Union[int, float]], Tuple[Union[int, float], ...]],
         box_b: Union[List[Union[int, float]], Tuple[Union[int, float], ...]],
     ) -> float:
-        """Compute Intersection-over-Union (IoU) between two bounding boxes [x, y, w, h].
-
-        Args:
-            box_a: [x, y, w, h] coordinates of box A.
-            box_b: [x, y, w, h] coordinates of box B.
-
-        Returns:
-            float: IoU score in range [0.0, 1.0].
-        """
+        """Compute Intersection-over-Union (IoU) between two bounding boxes [x, y, w, h]."""
         if len(box_a) < 4 or len(box_b) < 4:
             return 0.0
 
@@ -537,7 +678,7 @@ class ImageIngestionModule:
                 monument = Monument(
                     id=mon_uuid,
                     name=str(monument_id),
-                    location_name="Default Location",
+                    location_name="Monitored Site",
                     heritage_status="Registered",
                     importance_tier=1,
                     created_at=datetime.now(timezone.utc),
@@ -556,18 +697,7 @@ class ImageIngestionModule:
         bbox: List[int],
         polygon: Optional[List[List[float]]] = None,
     ) -> Union[uuid.UUID, int, str]:
-        """Resolve region_id against existing monument Region rows via IoU, or insert a new record.
-
-        Args:
-            db: SQLAlchemy database session.
-            monument_id: Unique monument string ID or UUID.
-            region_type: Category label (e.g. 'stone pillar column').
-            bbox: [x, y, w, h] bounding box.
-            polygon: Optional polygon coordinates.
-
-        Returns:
-            Union[uuid.UUID, int, str]: Resolved or newly assigned Region ID.
-        """
+        """Resolve region_id against existing monument Region rows via IoU, or insert a new record."""
         monument_uuid = self._resolve_monument_uuid(monument_id, db=db)
         existing_regions = db.query(Region).filter_by(monument_id=monument_uuid).all()
 
@@ -581,7 +711,6 @@ class ImageIngestionModule:
                 and len(reg.bounding_box) >= 4
             ):
                 iou = self._compute_bbox_iou(bbox, reg.bounding_box[:4])
-                # Optionally prioritize matching categories
                 if reg.category == region_type:
                     iou *= 1.1
 
@@ -589,15 +718,12 @@ class ImageIngestionModule:
                     best_iou = iou
                     best_match = reg
 
-        # If spatial overlap meets threshold, map to existing region
         if best_match is not None and best_iou >= self.iou_threshold:
             logger.debug(
-                f"Matched existing Region ID {best_match.id} ('{best_match.name}') "
-                f"with IoU {best_iou:.3f}"
+                f"Matched existing Region ID {best_match.id} ('{best_match.name}') with IoU {best_iou:.3f}"
             )
             return best_match.id
 
-        # Otherwise, persist a new Region record
         cat_count = sum(1 for r in existing_regions if r.category == region_type)
         reg_name = f"{region_type.replace(' ', '_')}_{cat_count + 1}"
 
@@ -731,43 +857,17 @@ class ImageIngestionModule:
         homography_matrix: Optional[np.ndarray] = None,
         reference_regions: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        """Segment architectural components via SAM + OpenCLIP with DB resolution and homography fallback.
-
-        Pipeline:
-            1. If USE_AI_SEGMENTATION is enabled:
-               a) Calls SAMSegmenter.generate_masks(image) to generate noise-filtered masks.
-               b) Calls CLIPRegionClassifier.classify_masks(image, masks, sam_segmenter)
-                  to extract cleaned, letterboxed crops and zero-shot classify them,
-                  automatically filtering out negative/transient content (people, sky, vegetation).
-               c) Resolves each detected region against existing database Region records
-                  using bounding box IoU (threshold >= 0.5) to avoid duplicate region entries.
-               d) If zero valid regions are detected or if AI models fail, gracefully
-                  falls back without crashing.
-            2. If USE_AI_SEGMENTATION is disabled, executes homography projection fallback.
-
-        Args:
-            image: Input photo as BGR or RGB OpenCV array.
-            monument_id: Unique monument string identifier.
-            db: Optional database session for Region persistence and IoU resolution.
-            homography_matrix: Optional 3x3 homography matrix for fallback.
-            reference_regions: Optional architectural region templates for fallback.
-
-        Returns:
-            List[Dict[str, Any]]: Standardized list of region dictionaries containing
-                region_id, name, category, region_type, bbox [x, y, w, h], and confidence_score.
-        """
+        """Segment architectural components via SAM + OpenCLIP with DB resolution and homography fallback."""
         if image is None or image.size == 0:
             return []
 
         if self.use_ai_segmentation:
             try:
-                # Ensure model singletons are assigned
                 if self.sam_segmenter is None:
                     self.sam_segmenter = get_sam_segmenter()
                 if self.region_classifier is None:
                     self.region_classifier = get_region_classifier()
 
-                # a) Generate fine-grained SAM masks
                 masks = self.sam_segmenter.generate_masks(image)
                 if not masks:
                     logger.warning(
@@ -781,7 +881,6 @@ class ImageIngestionModule:
                         db=db,
                     )
 
-                # b) Classify masks with OpenCLIP (negative classes dropped)
                 classified_masks = self.region_classifier.classify_masks(
                     image=image,
                     masks=masks,
@@ -795,7 +894,6 @@ class ImageIngestionModule:
                     )
                     return []
 
-                # c) Resolve Region IDs and build output list
                 result_regions: List[Dict[str, Any]] = []
                 for idx, item in enumerate(classified_masks):
                     bbox = item["bbox"]
@@ -840,7 +938,6 @@ class ImageIngestionModule:
                     db=db,
                 )
 
-        # Non-AI homography fallback path
         return self._segment_regions_homography_fallback(
             image=image,
             homography_matrix=homography_matrix,
@@ -850,40 +947,47 @@ class ImageIngestionModule:
         )
 
     # -------------------------------------------------------------------------
-    # 5. Full Pipeline Orchestration (Ingest)
+    # 7. Full Pipeline Orchestration (Expert Ingestion Flow)
     # -------------------------------------------------------------------------
     def ingest(
         self,
         image_bytes: bytes,
         monument_id: str,
+        region_id: Optional[Union[uuid.UUID, str]] = None,
         reference_image: Optional[np.ndarray] = None,
         user_id: Optional[str] = None,
         db: Optional[Session] = None,
         reference_regions: Optional[List[Dict[str, Any]]] = None,
         image_url: Optional[str] = None,
+        auto_score_reliability: bool = False,
+        auto_update_consensus: bool = False,
     ) -> ImageIngestionResponse:
-        """Execute end-to-end Module 1 ingestion pipeline for a crowdsourced photo.
+        """Execute Module 1 ingestion pipeline for an expert-confirmed monument photograph.
 
         Orchestrates:
-            1. Image decoding & validation.
-            2. Quality assessment (sharpness, glare, resolution).
-            3. EXIF metadata extraction (GPS, timestamp, hardware).
-            4. ORB keypoint matching & RANSAC homography registration.
-            5. Architectural region segmentation (SAM + CLIP / Fallback) with DB resolution.
-            6. Database persistence into Observation ORM record.
+            1. Image decoding & quality assessment (blur Laplacian variance, glare/exposure ratio).
+            2. EXIF metadata extraction (camera, GPS, timestamp).
+            3. Explicit region assignment or fallback matching.
+            4. Sequential alignment against the MOST RECENTLY STORED observation for the region
+               (cold start marks pristine baseline with registration_success=True).
+            5. Disk persistence for sequential alignment history.
+            6. Appending observation record to historical sequence in PostgreSQL.
 
         Args:
             image_bytes: Raw bytes of uploaded photograph.
-            monument_id: Unique monument string identifier.
-            reference_image: Optional reference baseline image array for registration.
-            user_id: Optional contributor user ID.
-            db: Optional SQLAlchemy database session for persistence.
-            reference_regions: Optional architectural region templates.
-            image_url: Optional remote or local URL for the stored photo.
+            monument_id: Unique monument identifier string or UUID.
+            region_id: Explicit region identifier confirmed by expert.
+            reference_image: Optional manual reference baseline image array.
+            user_id: Optional expert contributor identifier.
+            db: Optional database session for persistence and latest observation lookup.
+            reference_regions: Optional fallback region definitions.
+            image_url: Optional remote or local image path.
+            auto_score_reliability: Flag to toggle legacy reliability scoring (default: False).
+            auto_update_consensus: Flag to toggle legacy consensus memory update (default: False).
 
         Returns:
-            ImageIngestionResponse: Standardized SESCI response schema with quality scores,
-                EXIF metadata, matched region ID, and registration confidence.
+            ImageIngestionResponse: Standardized response schema with quality scores,
+                EXIF metadata, matched region ID, registration confidence, and baseline indicator.
         """
         # 1. Decode image bytes
         try:
@@ -899,49 +1003,133 @@ class ImageIngestionModule:
         exif_dict = self.extract_exif(image_bytes)
         exif_schema = EXIFMetadata(**exif_dict)
 
-        # 4. Registration & Segmentation
-        matched_region_id: Optional[int] = None
-        registration_confidence: Optional[float] = None
-        homography_matrix: Optional[np.ndarray] = None
-
-        if quality["is_valid_quality"]:
-            # Feature registration against reference baseline
-            if reference_image is not None:
-                reg_res = self.register_image(cv2_img, reference_image)
-                if reg_res["registration_success"]:
-                    homography_matrix = reg_res["homography_matrix"]
-                    registration_confidence = reg_res["confidence_score"]
-
-            # Segmentation with robust failure handling
+        # 4. Resolve Target Region ID
+        matched_region_id: Optional[Union[uuid.UUID, int, str]] = None
+        if region_id is not None:
+            resolved_reg_uuid = self._resolve_uuid_or_none(region_id)
+            if db is not None:
+                monument_uuid = self._resolve_monument_uuid(monument_id, db=db)
+                if resolved_reg_uuid is not None:
+                    db_region = db.query(Region).filter(Region.id == resolved_reg_uuid).first()
+                    if not db_region:
+                        db_region = Region(
+                            id=resolved_reg_uuid,
+                            monument_id=monument_uuid,
+                            name=f"Region_{str(resolved_reg_uuid)[:8]}",
+                            category="architectural_component",
+                            created_at=datetime.now(timezone.utc),
+                            updated_at=datetime.now(timezone.utc),
+                        )
+                        db.add(db_region)
+                        db.commit()
+                        db.refresh(db_region)
+                    matched_region_id = db_region.id
+                else:
+                    db_region = db.query(Region).filter(Region.monument_id == monument_uuid, Region.name == str(region_id)).first()
+                    if not db_region:
+                        db_region = Region(
+                            monument_id=monument_uuid,
+                            name=str(region_id),
+                            category="architectural_component",
+                            created_at=datetime.now(timezone.utc),
+                            updated_at=datetime.now(timezone.utc),
+                        )
+                        db.add(db_region)
+                        db.commit()
+                        db.refresh(db_region)
+                    matched_region_id = db_region.id
+            else:
+                matched_region_id = resolved_reg_uuid or region_id
+        elif quality["is_valid_quality"]:
+            # Fallback if no explicit region provided: run segmentation
             try:
                 regions = self.segment_regions(
                     image=cv2_img,
                     monument_id=monument_id,
                     db=db,
-                    homography_matrix=homography_matrix,
                     reference_regions=reference_regions,
                 )
                 if regions:
                     matched_region_id = regions[0]["region_id"]
             except Exception as seg_err:
-                logger.error(f"Error during region segmentation pass: {seg_err}")
-                regions = []
+                logger.error(f"Error during fallback region segmentation: {seg_err}")
                 matched_region_id = None
 
-        # Default fallback image URL
-        resolved_image_url = image_url or f"uploads/{monument_id}_{uuid.uuid4().hex[:8]}.jpg"
+        # 5. Alignment against Most Recent Observation (Sequential Alignment)
+        is_baseline: bool = False
+        registration_success: bool = False
+        registration_confidence: Optional[float] = None
+        homography_matrix: Optional[np.ndarray] = None
+
+        prior_obs = None
+        if db is not None and matched_region_id is not None:
+            prior_obs = self.get_latest_observation(db=db, region_id=matched_region_id)
+
+        if reference_image is not None:
+            # Explicit reference image provided
+            reg_res = self.register_image(cv2_img, reference_image)
+            registration_success = reg_res["registration_success"]
+            registration_confidence = reg_res["confidence_score"]
+            homography_matrix = reg_res["homography_matrix"]
+            is_baseline = False
+        elif prior_obs is not None:
+            # Align against most recent prior observation image for this region
+            ref_cv2 = None
+            if prior_obs.image_url:
+                candidate_paths = [
+                    prior_obs.image_url,
+                    os.path.join(getattr(settings, "UPLOAD_DIR", "./uploads"), os.path.basename(prior_obs.image_url)),
+                ]
+                for p in candidate_paths:
+                    if os.path.exists(p):
+                        try:
+                            ref_cv2 = cv2.imread(p)
+                            if ref_cv2 is not None:
+                                break
+                        except Exception:
+                            pass
+
+            if ref_cv2 is not None:
+                reg_res = self.register_image(cv2_img, ref_cv2)
+                registration_success = reg_res["registration_success"]
+                registration_confidence = reg_res["confidence_score"]
+                homography_matrix = reg_res["homography_matrix"]
+            else:
+                registration_success = False
+                registration_confidence = 0.0
+            is_baseline = False
+        else:
+            # Cold start: first upload for this region (baseline photo)
+            is_baseline = True
+            registration_success = True
+            registration_confidence = 1.0
+            homography_matrix = None
+
+        # 6. Save Image to Local Storage
+        upload_dir_str = getattr(settings, "UPLOAD_DIR", "./uploads")
+        os.makedirs(upload_dir_str, exist_ok=True)
+        saved_filename = f"{monument_id}_{matched_region_id or 'general'}_{uuid.uuid4().hex[:8]}.jpg"
+        disk_filepath = os.path.join(upload_dir_str, saved_filename)
+        try:
+            with open(disk_filepath, "wb") as f_out:
+                f_out.write(image_bytes)
+            resolved_image_url = image_url or disk_filepath
+        except Exception as save_err:
+            logger.warning(f"Failed to write image to disk at {disk_filepath}: {save_err}")
+            resolved_image_url = image_url or f"uploads/{saved_filename}"
+
         captured_timestamp = exif_dict.get("timestamp") or datetime.now(timezone.utc)
 
-        # 5. Database Persistence
+        # 7. Database Persistence
         observation_id = uuid.uuid4()
         if db is not None:
             try:
                 monument_uuid = self._resolve_monument_uuid(monument_id, db=db)
-                # Prepare JSON-safe serialization of exif_dict
                 exif_json_safe = {
                     k: v.isoformat() if isinstance(v, datetime) else v
                     for k, v in exif_dict.items()
                 }
+
                 obs_record = Observation(
                     monument_id=monument_uuid,
                     user_id=user_id,
@@ -955,7 +1143,7 @@ class ImageIngestionModule:
                     resolution_width=quality.get("resolution_w"),
                     resolution_height=quality.get("resolution_h"),
                     exif_data=exif_json_safe,
-                    registration_success=bool(registration_confidence is not None and registration_confidence > 0),
+                    registration_success=registration_success,
                     registration_confidence=registration_confidence,
                     reliability_score=quality.get("overall_quality_score"),
                     region_id=self._resolve_uuid_or_none(matched_region_id),
@@ -967,24 +1155,20 @@ class ImageIngestionModule:
                 db.refresh(obs_record)
                 observation_id = obs_record.id
 
-                # Auto-score reliability using injected ReliabilityEngineModule (Module 2)
-                if self.reliability_engine is not None:
+                # Optional legacy hooks (disabled by default in expert flow)
+                if auto_score_reliability and self.reliability_engine is not None:
                     try:
                         self.reliability_engine.compute_reliability(obs_record, db=db)
                     except Exception as rel_err:
-                        logger.warning(f"Automatic reliability computation error: {rel_err}")
+                        logger.warning(f"Reliability computation error: {rel_err}")
 
-                # Auto-update consensus memory using injected ConsensusMemoryModule (Module 3)
-                if self.consensus_memory is not None:
+                if auto_update_consensus and self.consensus_memory is not None:
                     if obs_record.region_id is not None:
                         try:
                             self.consensus_memory.process_observation(obs_record, db=db, image=cv2_img)
                         except Exception as cons_err:
-                            logger.warning(f"Automatic consensus memory update error: {cons_err}")
-                    else:
-                        logger.warning(
-                            "Observation has no matched_region_id; skipping automatic consensus memory update."
-                        )
+                            logger.warning(f"Consensus memory update error: {cons_err}")
+
             except Exception as err:
                 db.rollback()
                 logger.error(f"Database error saving observation: {err}")
@@ -1000,7 +1184,9 @@ class ImageIngestionModule:
             resolution_h=quality["resolution_h"],
             exif=exif_schema,
             matched_region_id=matched_region_id,
+            registration_success=registration_success,
             registration_confidence=registration_confidence,
+            is_baseline=is_baseline,
             created_at=datetime.now(timezone.utc),
         )
 
