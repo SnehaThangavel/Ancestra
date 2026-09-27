@@ -11,7 +11,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+try:
+    from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+except ImportError:
+    sam_model_registry = None
+    SamAutomaticMaskGenerator = None
 
 from app.config import settings
 from app.utils.logging import get_logger

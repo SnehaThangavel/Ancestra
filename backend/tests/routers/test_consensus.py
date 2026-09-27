@@ -41,14 +41,15 @@ def test_get_region_consensus_success_and_not_found(
     assert resp_404.status_code == 404
 
     # 2. Add ConsensusState
+    obs_id = uuid.uuid4()
     cs = ConsensusState(
         id=uuid.uuid4(),
         region_id=reg.id,
         version=1,
-        cumulative_reliability=2.5,
-        observation_count=3,
-        structural_health_index=0.95,
-        consensus_tensor={"histogram": [0.03] * 32, "mean_intensity": 130.0},
+        baseline_observation_id=obs_id,
+        last_updated_by_observation_id=obs_id,
+        observation_count=1,
+        structural_health_index=1.0,
     )
     db_session.add(cs)
     db_session.commit()
@@ -59,16 +60,16 @@ def test_get_region_consensus_success_and_not_found(
     data = resp_200.json()
     assert data["region_id"] == str(reg.id)
     assert data["version"] == 1
-    assert data["structural_health_index"] == 0.95
-    assert data["cumulative_reliability"] == 2.5
-    assert data["observation_count"] == 3
+    assert data["baseline_observation_id"] == str(obs_id)
+    assert data["last_observation_id"] == str(obs_id)
+    assert data["structural_health_index"] == 1.0
 
 
-def test_update_region_consensus_endpoint(
+def test_record_observation_pointer_endpoint(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    """Test POST /api/v1/consensus/update manually triggers consensus update."""
+    """Test POST /api/v1/consensus/record-observation updates pointer."""
     mon = Monument(
         id=uuid.uuid4(),
         name="Shore Temple",
@@ -94,37 +95,34 @@ def test_update_region_consensus_endpoint(
         region_id=reg.id,
         image_url="uploads/shore.jpg",
         overall_quality_score=0.9,
-        reliability_score=0.88,
     )
     db_session.add(obs)
     db_session.commit()
 
-    # Trigger update
-    payload = {
-        "observation_id": str(obs.id),
-        "region_id": str(reg.id),
-        "reliability_weight": 0.88,
-    }
-    response = client.post("/api/v1/consensus/update", json=payload)
-    assert response.status_code == 200
-    data = response.json()
+    # Call record-observation
+    resp = client.post(
+        "/api/v1/consensus/record-observation",
+        json={"observation_id": str(obs.id), "region_id": str(reg.id)},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
     assert data["region_id"] == str(reg.id)
-    assert data["version"] == 1
+    assert data["baseline_observation_id"] == str(obs.id)
+    assert data["last_observation_id"] == str(obs.id)
     assert data["observation_count"] == 1
-    assert data["cumulative_reliability"] == 0.88
 
 
-def test_reset_region_consensus_endpoint(
+def test_reset_region_baseline_endpoint(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    """Test POST /api/v1/consensus/{region_id}/reset creates incremented consensus version."""
+    """Test POST /api/v1/consensus/{region_id}/reset-baseline creates a new version."""
     mon = Monument(
         id=uuid.uuid4(),
-        name="Golconda Fort",
-        location_name="Hyderabad",
-        heritage_status="Heritage Site",
-        importance_tier=2,
+        name="Sun Temple",
+        location_name="Konark",
+        heritage_status="UNESCO",
+        importance_tier=1,
     )
     db_session.add(mon)
     db_session.commit()
@@ -132,30 +130,45 @@ def test_reset_region_consensus_endpoint(
     reg = Region(
         id=uuid.uuid4(),
         monument_id=mon.id,
-        name="Acoustic_Dome_Ceiling",
-        category="structural dome roof",
+        name="Wheel_Section_1",
+        category="stone relief",
     )
     db_session.add(reg)
     db_session.commit()
 
-    # Initial state v1
-    cs_v1 = ConsensusState(
+    obs = Observation(
         id=uuid.uuid4(),
+        monument_id=mon.id,
         region_id=reg.id,
-        version=1,
-        cumulative_reliability=4.0,
-        observation_count=5,
-        structural_health_index=0.80,
+        image_url="uploads/konark.jpg",
     )
-    db_session.add(cs_v1)
+    db_session.add(obs)
     db_session.commit()
 
-    # Call reset endpoint
-    reset_payload = {"reason": "Completed dome waterproofing and structural underpinning"}
-    response = client.post(f"/api/v1/consensus/{reg.id}/reset", json=reset_payload)
-    assert response.status_code == 200
-    data = response.json()
+    # First initialize v1
+    client.post(
+        "/api/v1/consensus/record-observation",
+        json={"observation_id": str(obs.id), "region_id": str(reg.id)},
+    )
+
+    # Now trigger restoration reset
+    resp_reset = client.post(
+        f"/api/v1/consensus/{reg.id}/reset-baseline",
+        json={
+            "reason": "Complete chemical cleaning and stone consolidation",
+            "baseline_observation_id": str(obs.id),
+        },
+    )
+    assert resp_reset.status_code == 200
+    data = resp_reset.json()
     assert data["version"] == 2
-    assert data["observation_count"] == 0
-    assert data["cumulative_reliability"] == 0.0
-    assert data["reset_reason"] == "Completed dome waterproofing and structural underpinning"
+    assert data["reset_reason"] == "Complete chemical cleaning and stone consolidation"
+    assert data["baseline_observation_id"] == str(obs.id)
+
+    # Check history endpoint
+    resp_hist = client.get(f"/api/v1/consensus/{reg.id}/history")
+    assert resp_hist.status_code == 200
+    hist_data = resp_hist.json()
+    assert len(hist_data) == 2
+    assert hist_data[0]["version"] == 1
+    assert hist_data[1]["version"] == 2

@@ -1,50 +1,37 @@
-"""Module 3: Reliability-Weighted Continuous Running Consensus Memory Update.
+"""Module 3: Regional Consensus State & Baseline Pointer Manager.
 
-SESCI Architecture - Patent Claim Scope:
-Maintains a running, incrementally-updated baseline condition representation (ConsensusState)
-for each architectural region, weighted by each observation's reliability score from Module 2.
-
-Reliability-Adaptive Evidence Fusion:
-    new_tensor = (old_tensor * cumulative_reliability + new_obs_tensor * obs.reliability_score) /
-                 (cumulative_reliability + obs.reliability_score)
-    cumulative_reliability += obs.reliability_score
-    observation_count += 1
+SESCI Architecture - Module 3 (Baseline State & Restoration Pointer Management):
+Maintains the active baseline observation and latest observation pointer for each
+architectural region. Handles deliberate post-restoration baseline version resets
+for physical repair events without Bayesian tensor blending.
 """
 
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, Any, Optional, Union, List
-import numpy as np
-import cv2
+from typing import Optional, Union, List, Any
 from sqlalchemy.orm import Session
 
 from app.models.consensus_state import ConsensusState
 from app.models.observation import Observation
-from app.utils.image_utils import load_image_cv2, compute_laplacian_variance
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 class ConsensusMemoryModule:
-    """Production-grade implementation of Module 3: Consensus Memory State Management."""
+    """Module 3 implementation: Regional baseline state and observation pointer manager."""
 
-    def __init__(self, alpha_decay: float = 0.95) -> None:
-        """Initialize consensus memory module parameters.
-
-        Args:
-            alpha_decay: Optional temporal decay parameter for historical consensus tensor memory.
-        """
-        self.alpha_decay = alpha_decay
+    def __init__(self) -> None:
+        """Initialize Module 3 service."""
+        pass
 
     # -------------------------------------------------------------------------
-    # 1. Active Consensus State Query
+    # 1. Query Active State & History
     # -------------------------------------------------------------------------
     def get_active_consensus_state(
         self, region_id: Union[uuid.UUID, str], db: Session
     ) -> Optional[ConsensusState]:
-        """Fetch the latest active ConsensusState for a region (highest version number).
+        """Fetch the current active ConsensusState for a region (highest version number).
 
         Args:
             region_id: Region UUID or identifier.
@@ -61,143 +48,58 @@ class ConsensusMemoryModule:
             .first()
         )
 
-    # -------------------------------------------------------------------------
-    # 2. Feature Representation Extraction Helper
-    # -------------------------------------------------------------------------
-    def _compute_feature_representation(
-        self, image: Optional[np.ndarray] = None
-    ) -> Dict[str, Any]:
-        """Compute statistical visual feature representation tensor for an observation crop.
-
-        Note:
-            This statistical tensor (32-bin normalized intensity histogram, channel means,
-            standard deviation, and Laplacian texture variance) serves as the baseline
-            visual representation for consensus memory evidence fusion, designed to be
-            later augmented with high-dimensional foundation model embeddings.
+    def get_consensus_history(
+        self, region_id: Union[uuid.UUID, str], db: Session
+    ) -> List[ConsensusState]:
+        """Fetch all historical consensus state versions for a region.
 
         Args:
-            image: OpenCV BGR/RGB image array of the registered architectural region.
+            region_id: Region UUID or identifier.
+            db: SQLAlchemy database session.
 
         Returns:
-            Dict[str, Any]: Standardized JSON-safe dictionary containing histogram and stats.
+            List[ConsensusState]: Chronological list of consensus states by version.
         """
-        if image is None or not isinstance(image, np.ndarray) or image.size == 0:
-            # Safe statistical fallback representation
-            return {
-                "histogram": [round(1.0 / 32, 5)] * 32,
-                "mean_intensity": 128.0,
-                "std_intensity": 40.0,
-                "laplacian_variance": 100.0,
-                "channels_mean": [128.0, 128.0, 128.0],
-            }
-
-        try:
-            # Grayscale intensity histogram (32 bins)
-            gray = (
-                cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                if len(image.shape) == 3
-                else image
-            )
-            hist = cv2.calcHist([gray], [0], None, [32], [0, 256]).flatten()
-            total_pixels = float(np.sum(hist))
-            if total_pixels > 0:
-                hist = hist / total_pixels
-            else:
-                hist = np.ones(32, dtype=np.float32) / 32.0
-
-            hist_list = [round(float(v), 5) for v in hist]
-
-            # Texture & intensity statistics
-            mean_intensity = float(np.mean(gray))
-            std_intensity = float(np.std(gray))
-            lap_var = compute_laplacian_variance(image)
-
-            # 3-channel BGR means
-            if len(image.shape) == 3 and image.shape[2] >= 3:
-                ch_means = [round(float(np.mean(image[:, :, i])), 3) for i in range(3)]
-            else:
-                ch_means = [round(mean_intensity, 3)] * 3
-
-            return {
-                "histogram": hist_list,
-                "mean_intensity": round(mean_intensity, 3),
-                "std_intensity": round(std_intensity, 3),
-                "laplacian_variance": round(float(lap_var), 3),
-                "channels_mean": ch_means,
-            }
-        except Exception as err:
-            logger.warning(f"Error computing feature representation: {err}")
-            return {
-                "histogram": [round(1.0 / 32, 5)] * 32,
-                "mean_intensity": 128.0,
-                "std_intensity": 40.0,
-                "laplacian_variance": 100.0,
-                "channels_mean": [128.0, 128.0, 128.0],
-            }
-
-    def _extract_image_features(
-        self, observation: Observation, image: Optional[np.ndarray] = None
-    ) -> Dict[str, Any]:
-        """Extract feature representation from image array or disk file."""
-        if image is not None and isinstance(image, np.ndarray) and image.size > 0:
-            return self._compute_feature_representation(image)
-
-        image_url = getattr(observation, "image_url", None)
-        if image_url:
-            path = Path(image_url)
-            if path.exists():
-                try:
-                    loaded_img = load_image_cv2(str(path))
-                    return self._compute_feature_representation(loaded_img)
-                except Exception:
-                    pass
-
-        # Fallback from observation triage scores if image is unavailable on disk
-        sharpness = getattr(observation, "sharpness_score", 0.5) or 0.5
-        exposure = getattr(observation, "exposure_score", 0.5) or 0.5
-        quality = getattr(observation, "overall_quality_score", 0.5) or 0.5
-
-        return {
-            "histogram": [round(1.0 / 32, 5)] * 32,
-            "mean_intensity": round(float(exposure) * 255.0, 3),
-            "std_intensity": 40.0,
-            "laplacian_variance": round(float(sharpness) * 120.0, 3),
-            "channels_mean": [round(float(quality) * 200.0, 3)] * 3,
-        }
+        region_uuid = self._resolve_uuid(region_id)
+        return (
+            db.query(ConsensusState)
+            .filter(ConsensusState.region_id == region_uuid)
+            .order_by(ConsensusState.version.asc())
+            .all()
+        )
 
     # -------------------------------------------------------------------------
-    # 3. Initialize Consensus State (Cold Start)
+    # 2. Initialize Baseline Pointer (Cold Start)
     # -------------------------------------------------------------------------
     def initialize_consensus_state(
         self,
         region_id: Union[uuid.UUID, str],
         observation: Observation,
         db: Session,
-        image: Optional[np.ndarray] = None,
+        **kwargs: Any,
     ) -> ConsensusState:
-        """Initialize version 1 ConsensusState for a region's first-ever observation.
+        """Initialize version 1 ConsensusState establishing baseline and last observation pointers.
 
         Args:
             region_id: Region UUID or identifier.
-            observation: First observation record.
+            observation: First observation record serving as initial baseline.
             db: SQLAlchemy database session.
-            image: Optional image array.
 
         Returns:
-            ConsensusState: Newly initialized ConsensusState record.
+            ConsensusState: Newly initialized version 1 ConsensusState.
         """
         region_uuid = self._resolve_uuid(region_id)
-        reliability = float(getattr(observation, "reliability_score", 0.5) or 0.5)
-        feature_tensor = self._extract_image_features(observation, image=image)
+        obs_id = getattr(observation, "id", None)
 
         new_state = ConsensusState(
             region_id=region_uuid,
             version=1,
-            cumulative_reliability=round(reliability, 4),
+            baseline_observation_id=obs_id,
+            last_updated_by_observation_id=obs_id,
             observation_count=1,
-            structural_health_index=1.0,  # Assume pristine/healthy until defect proven
-            consensus_tensor=feature_tensor,
-            last_updated_by_observation_id=getattr(observation, "id", None),
+            structural_health_index=1.0,  # Default initial health condition
+            reset_reason="Initial baseline photo",
+            cumulative_reliability=1.0,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
@@ -206,32 +108,26 @@ class ConsensusMemoryModule:
         db.refresh(new_state)
         logger.info(
             f"Initialized version 1 ConsensusState for Region ID {region_uuid} "
-            f"with initial reliability {reliability:.4f}"
+            f"(baseline_obs={obs_id})"
         )
         return new_state
 
     # -------------------------------------------------------------------------
-    # 4. Bayesian Reliability-Weighted Running Update
+    # 3. Update Latest Observation Pointer
     # -------------------------------------------------------------------------
     def update_consensus_state(
         self,
         region_id: Union[uuid.UUID, str],
         observation: Observation,
         db: Session,
-        image: Optional[np.ndarray] = None,
+        **kwargs: Any,
     ) -> ConsensusState:
-        """Perform reliability-weighted running Bayesian update on active ConsensusState.
-
-        Formula:
-            new_tensor = (old_tensor * W_old + new_obs_tensor * w_new) / (W_old + w_new)
-            W_old += w_new
-            observation_count += 1
+        """Update last_observation pointer on the active ConsensusState without altering baseline.
 
         Args:
             region_id: Region UUID or identifier.
-            observation: New observation record.
+            observation: New confirmed expert observation.
             db: SQLAlchemy database session.
-            image: Optional image array.
 
         Returns:
             ConsensusState: Updated active ConsensusState record.
@@ -240,97 +136,45 @@ class ConsensusMemoryModule:
         active_state = self.get_active_consensus_state(region_uuid, db)
 
         if active_state is None:
-            return self.initialize_consensus_state(region_uuid, observation, db, image=image)
+            return self.initialize_consensus_state(region_uuid, observation, db)
 
-        # Handle post-reset state with empty tensor
-        if active_state.consensus_tensor is None:
-            feature_tensor = self._extract_image_features(observation, image=image)
-            reliability = float(getattr(observation, "reliability_score", 0.5) or 0.5)
-            active_state.consensus_tensor = feature_tensor
-            active_state.cumulative_reliability = round(reliability, 4)
-            active_state.observation_count = 1
-            active_state.last_updated_by_observation_id = getattr(observation, "id", None)
-            active_state.updated_at = datetime.now(timezone.utc)
-            db.commit()
-            db.refresh(active_state)
-            return active_state
+        obs_id = getattr(observation, "id", None)
 
-        old_tensor = active_state.consensus_tensor or {}
-        new_obs_tensor = self._extract_image_features(observation, image=image)
+        # If baseline pointer was unset (e.g., after a reset awaiting first photo)
+        if active_state.baseline_observation_id is None and obs_id is not None:
+            active_state.baseline_observation_id = obs_id
 
-        w_old = float(active_state.cumulative_reliability or 0.0)
-        w_new = float(getattr(observation, "reliability_score", 0.5) or 0.5)
-        w_total = w_old + w_new
-        if w_total <= 0.0:
-            w_total = 1.0
-
-        # Reliability-adaptive blending of histogram bins
-        old_hist = np.array(
-            old_tensor.get("histogram", [1.0 / 32] * 32), dtype=np.float32
-        )
-        new_hist = np.array(
-            new_obs_tensor.get("histogram", [1.0 / 32] * 32), dtype=np.float32
-        )
-        blended_hist = (old_hist * w_old + new_hist * w_new) / w_total
-        blended_hist_list = [round(float(v), 5) for v in blended_hist]
-
-        # Reliability-adaptive blending of scalar and vector metrics
-        def blend_metric(key: str, default: Any) -> Any:
-            v_old = old_tensor.get(key, default)
-            v_new = new_obs_tensor.get(key, default)
-            if isinstance(v_old, list) and isinstance(v_new, list):
-                arr_old = np.array(v_old, dtype=np.float32)
-                arr_new = np.array(v_new, dtype=np.float32)
-                return [
-                    round(float(x), 3)
-                    for x in (arr_old * w_old + arr_new * w_new) / w_total
-                ]
-            try:
-                val = (float(v_old) * w_old + float(v_new) * w_new) / w_total
-                return round(float(val), 3)
-            except (ValueError, TypeError):
-                return v_new
-
-        blended_tensor = {
-            "histogram": blended_hist_list,
-            "mean_intensity": blend_metric("mean_intensity", 128.0),
-            "std_intensity": blend_metric("std_intensity", 40.0),
-            "laplacian_variance": blend_metric("laplacian_variance", 100.0),
-            "channels_mean": blend_metric("channels_mean", [128.0, 128.0, 128.0]),
-        }
-
-        # Update the active ConsensusState row (preserve version, do not touch structural_health_index)
-        active_state.consensus_tensor = blended_tensor
-        active_state.cumulative_reliability = round(w_total, 4)
+        active_state.last_updated_by_observation_id = obs_id
         active_state.observation_count = int(active_state.observation_count or 0) + 1
-        active_state.last_updated_by_observation_id = getattr(observation, "id", None)
         active_state.updated_at = datetime.now(timezone.utc)
 
         db.commit()
         db.refresh(active_state)
-        logger.debug(
+        logger.info(
             f"Updated ConsensusState v{active_state.version} for Region ID {region_uuid} "
-            f"(count={active_state.observation_count}, cum_rel={active_state.cumulative_reliability:.3f})"
+            f"(last_obs={obs_id}, count={active_state.observation_count})"
         )
         return active_state
 
     # -------------------------------------------------------------------------
-    # 5. Create New Consensus Version (Explicit Major Recalibration / Reset)
+    # 4. Explicit Restoration / Repair Baseline Reset
     # -------------------------------------------------------------------------
-    def create_new_consensus_version(
+    def reset_baseline(
         self,
         region_id: Union[uuid.UUID, str],
         reason: Optional[str],
         db: Session,
+        baseline_observation_id: Optional[Union[uuid.UUID, str]] = None,
     ) -> ConsensusState:
-        """Create a new incremented ConsensusState version for major repairs or resets.
+        """Create a new incremented ConsensusState version following verified physical restoration.
 
-        Preserves existing versions in historical records while starting a fresh baseline.
+        Preserves previous versions in history while establishing a new baseline reference point.
 
         Args:
             region_id: Region UUID or identifier.
-            reason: Justification note for version reset (e.g., 'Restoration work completed').
+            reason: Explanation of the restoration/repair action.
             db: SQLAlchemy database session.
+            baseline_observation_id: Optional specific observation ID to serve as new baseline.
 
         Returns:
             ConsensusState: Newly created incremented version ConsensusState.
@@ -339,15 +183,21 @@ class ConsensusMemoryModule:
         latest_state = self.get_active_consensus_state(region_uuid, db)
         next_version = (latest_state.version + 1) if latest_state else 1
 
+        resolved_base_obs = (
+            self._resolve_uuid(baseline_observation_id)
+            if baseline_observation_id is not None
+            else None
+        )
+
         new_version_state = ConsensusState(
             region_id=region_uuid,
             version=next_version,
-            cumulative_reliability=0.0,
-            observation_count=0,
-            structural_health_index=1.0,
-            consensus_tensor=None,  # Initialized fresh by next incoming observation
-            reset_reason=reason,
-            last_updated_by_observation_id=None,
+            baseline_observation_id=resolved_base_obs,
+            last_updated_by_observation_id=resolved_base_obs,
+            observation_count=1 if resolved_base_obs is not None else 0,
+            structural_health_index=1.0,  # Post-repair baseline reset to pristine state
+            reset_reason=reason or "Post-restoration baseline reset",
+            cumulative_reliability=1.0,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
@@ -356,25 +206,39 @@ class ConsensusMemoryModule:
         db.refresh(new_version_state)
         logger.info(
             f"Created new ConsensusState version {next_version} for Region ID {region_uuid} "
-            f"(reason='{reason}')"
+            f"(reason='{reason}', baseline_obs={resolved_base_obs})"
         )
         return new_version_state
 
+    def create_new_consensus_version(
+        self,
+        region_id: Union[uuid.UUID, str],
+        reason: Optional[str],
+        db: Session,
+        baseline_observation_id: Optional[Union[uuid.UUID, str]] = None,
+    ) -> ConsensusState:
+        """Alias for reset_baseline for backward compatibility."""
+        return self.reset_baseline(
+            region_id=region_id,
+            reason=reason,
+            db=db,
+            baseline_observation_id=baseline_observation_id,
+        )
+
     # -------------------------------------------------------------------------
-    # 6. Unified Processing Pipeline Entry Point
+    # 5. Unified Entry Point
     # -------------------------------------------------------------------------
     def process_observation(
         self,
         observation: Observation,
         db: Session,
-        image: Optional[np.ndarray] = None,
+        **kwargs: Any,
     ) -> Optional[ConsensusState]:
-        """Unified entry point to incorporate an observation into regional consensus memory.
+        """Incorporate observation into regional consensus state by updating pointer.
 
         Args:
-            observation: Observation record to process.
+            observation: Observation record.
             db: SQLAlchemy database session.
-            image: Optional image array.
 
         Returns:
             Optional[ConsensusState]: Active or updated ConsensusState record.
@@ -389,14 +253,12 @@ class ConsensusMemoryModule:
                 region_id=observation.region_id,
                 observation=observation,
                 db=db,
-                image=image,
             )
 
         return self.update_consensus_state(
             region_id=observation.region_id,
             observation=observation,
             db=db,
-            image=image,
         )
 
     # -------------------------------------------------------------------------

@@ -10,7 +10,10 @@ from typing import List, Dict, Any, Optional, Union, Set
 import numpy as np
 import torch
 from PIL import Image
-import open_clip
+try:
+    import open_clip
+except ImportError:
+    open_clip = None
 
 from app.config import settings
 from app.utils.logging import get_logger

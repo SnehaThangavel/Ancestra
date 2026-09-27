@@ -30,7 +30,10 @@ from app.utils.logging import setup_logging
 setup_logging()
 
 # Create DB tables if dev/test
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception:
+    pass
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

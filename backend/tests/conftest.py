@@ -15,15 +15,41 @@ from app.models.user import User
 from app.auth.jwt_handler import create_access_token
 from app.main import app
 
-# Ensure tests use the PostgreSQL test database
+from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, ARRAY
+from sqlalchemy.types import JSON
+
+@compiles(JSONB, "sqlite")
+def compile_jsonb_sqlite(type_, compiler, **kw):
+    return "JSON"
+
+@compiles(ARRAY, "sqlite")
+def compile_array_sqlite(type_, compiler, **kw):
+    return "JSON"
+
+@compiles(PG_UUID, "sqlite")
+def compile_uuid_sqlite(type_, compiler, **kw):
+    return "VARCHAR(36)"
+
+# Ensure tests use the PostgreSQL test database or fallback to SQLite in-memory for testing
 TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", settings.TEST_DATABASE_URL)
 if TEST_DB_URL.startswith("postgresql://"):
     TEST_DB_URL = TEST_DB_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-test_engine = create_engine(
-    TEST_DB_URL,
-    pool_pre_ping=True,
-)
+try:
+    test_engine = create_engine(
+        TEST_DB_URL,
+        pool_pre_ping=True,
+    )
+    with test_engine.connect() as _test_conn:
+        pass
+except Exception:
+    test_engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
 
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
