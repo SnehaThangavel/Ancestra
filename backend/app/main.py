@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
+from fastapi.staticfiles import StaticFiles
+
 from app.config import settings
 from app.database import Base, engine
 from app.routers import (
@@ -23,6 +25,8 @@ from app.routers import (
     validation_router,
     temporal_router,
     orchestrator_router,
+    monuments_router,
+    regions_router,
 )
 from app.utils.logging import setup_logging
 
@@ -43,6 +47,12 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Mount static uploads directory for serving uploaded observation images
+uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
+if not os.path.exists(uploads_dir):
+    os.makedirs(uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
 
 # SessionMiddleware required by Authlib for transient OAuth CSRF state verification
 app.add_middleware(
@@ -68,6 +78,8 @@ app.add_middleware(
 # Register Authentication and SESCI Module Routers
 app.include_router(auth_router)
 app.include_router(auth_router, prefix=settings.API_V1_STR)
+app.include_router(monuments_router, prefix=settings.API_V1_STR)
+app.include_router(regions_router, prefix=settings.API_V1_STR)
 app.include_router(ingestion_router, prefix=settings.API_V1_STR)
 app.include_router(reliability_router, prefix=settings.API_V1_STR)
 app.include_router(consensus_router, prefix=settings.API_V1_STR)

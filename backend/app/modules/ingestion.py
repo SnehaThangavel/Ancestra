@@ -959,7 +959,7 @@ class ImageIngestionModule:
         db: Optional[Session] = None,
         reference_regions: Optional[List[Dict[str, Any]]] = None,
         image_url: Optional[str] = None,
-        auto_score_reliability: bool = False,
+        auto_score_reliability: bool = True,
         auto_update_consensus: bool = True,
     ) -> ImageIngestionResponse:
         """Execute Module 1 ingestion pipeline for an expert-confirmed monument photograph.
@@ -1109,14 +1109,14 @@ class ImageIngestionModule:
         upload_dir_str = getattr(settings, "UPLOAD_DIR", "./uploads")
         os.makedirs(upload_dir_str, exist_ok=True)
         saved_filename = f"{monument_id}_{matched_region_id or 'general'}_{uuid.uuid4().hex[:8]}.jpg"
-        disk_filepath = os.path.join(upload_dir_str, saved_filename)
+        disk_filepath = os.path.join(upload_dir_str, saved_filename).replace("\\", "/")
         try:
             with open(disk_filepath, "wb") as f_out:
                 f_out.write(image_bytes)
-            resolved_image_url = image_url or disk_filepath
+            resolved_image_url = disk_filepath
         except Exception as save_err:
             logger.warning(f"Failed to write image to disk at {disk_filepath}: {save_err}")
-            resolved_image_url = image_url or f"uploads/{saved_filename}"
+            resolved_image_url = disk_filepath
 
         captured_timestamp = exif_dict.get("timestamp") or datetime.now(timezone.utc)
 

@@ -17,20 +17,20 @@ export function SiteModal({ isOpen, onClose, siteToEdit = null, prefillData = nu
     category: "UNESCO World Heritage Site",
     description: "",
     image: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
-    status: "CRITICAL"
+    status: "MONITOR",
   });
 
   useEffect(() => {
     if (initialData) {
       setFormData({
         name: initialData.name || "",
-        location: initialData.location || "",
+        location: initialData.location || initialData.location_name || "",
         circle: initialData.circle || "ASI Chennai Circle",
         material: initialData.material || "Granite & Freestone Blockwork",
-        category: initialData.category || "UNESCO World Heritage Site",
+        category: initialData.category || initialData.heritage_status || "UNESCO World Heritage Site",
         description: initialData.description || "",
         image: initialData.image || "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
-        status: initialData.status || "CRITICAL"
+        status: initialData.status || "MONITOR",
       });
     } else {
       setFormData({
@@ -41,19 +41,19 @@ export function SiteModal({ isOpen, onClose, siteToEdit = null, prefillData = nu
         category: "UNESCO World Heritage Site",
         description: "",
         image: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
-        status: "CRITICAL"
+        status: "MONITOR",
       });
     }
   }, [initialData, isOpen]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name || !formData.location) return;
 
     if (isEditing) {
-      updateHeritageSite(siteToEdit.id, formData);
+      await updateHeritageSite(siteToEdit.id, formData);
     } else {
-      addHeritageSite(formData);
+      await addHeritageSite(formData);
     }
 
     onClose();

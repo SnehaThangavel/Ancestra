@@ -1,11 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import {
-  mockHeritageSites,
-  mockArchitecturalRegions,
-  mockAssessments,
-  mockReports,
-  mockNotifications
-} from "../data/mockData";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { api, getAccessToken, getRefreshToken, setTokens, clearTokens } from "../services/api";
 
 const AppContext = createContext();
@@ -13,15 +6,147 @@ const AppContext = createContext();
 export function AppProvider({ children }) {
   // Authentication & Current User Role
   const [currentUser, setCurrentUser] = useState({
-    id: "exp_01",
+    id: "usr_exp_01",
     name: "Dr. A. Sharma",
     title: "Lead Conservator (ASI)",
     email: "a.sharma@asi.gov.in",
-    role: "CONSERVATION_EXPERT" // "CONSERVATION_EXPERT" or "ADMINISTRATOR"
+    role: "CONSERVATION_EXPERT", // "CONSERVATION_EXPERT" or "ADMINISTRATOR"
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState(() => !!getAccessToken());
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  // Application Global Core State (populated from database via API)
+  const [heritageSites, setHeritageSites] = useState([]);
+  const [architecturalRegions, setArchitecturalRegions] = useState([]);
+  const [assessments, setAssessments] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+
+  // AI Perception Pipeline Progress State
+  const [pipelineStep, setPipelineStep] = useState(1);
+  const [isPipelineComplete, setIsPipelineComplete] = useState(false);
+
+  // Heritage Site Requests (Expert -> Admin Workflow)
+  const [siteRequests, setSiteRequests] = useState([]);
+
+  // AI Assessment Engine System Status
+  const [aiEngineStatus, setAiEngineStatus] = useState({
+    online: true,
+    modelState: "READY",
+  });
+
+  // Selected Active Context
+  const [activeSiteId, setActiveSiteId] = useState(null);
+  const [pendingAnalysis, setPendingAnalysis] = useState(null);
+  const [activeResult, setActiveResult] = useState(null);
+
+  // Toast Notification Message State
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((message, type = "info") => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  }, []);
+
+  // Fetch all initial data directly from database via backend API
+  const refreshAppData = useCallback(async () => {
+    setIsLoadingData(true);
+    try {
+      // 1. Fetch Monuments & Regions
+      const [monumentsData, regionsData, anomaliesData, workOrdersData] = await Promise.allSettled([
+        api.getMonuments(),
+        api.getRegions(),
+        api.getAnomalies(),
+        api.getWorkOrders(),
+      ]);
+
+      let loadedSites = [];
+      if (monumentsData.status === "fulfilled" && Array.isArray(monumentsData.value)) {
+        loadedSites = monumentsData.value;
+        setHeritageSites(loadedSites);
+        if (loadedSites.length > 0 && !activeSiteId) {
+          setActiveSiteId(loadedSites[0].id);
+        }
+      }
+
+      let loadedRegions = [];
+      if (regionsData.status === "fulfilled" && Array.isArray(regionsData.value)) {
+        loadedRegions = regionsData.value;
+        setArchitecturalRegions(loadedRegions);
+      }
+
+      // 2. Fetch Assessments / Anomalies
+      let loadedAnomalies = [];
+      if (anomaliesData.status === "fulfilled" && Array.isArray(anomaliesData.value)) {
+        loadedAnomalies = anomaliesData.value;
+        setAssessments(loadedAnomalies);
+        if (loadedAnomalies.length > 0) {
+          setActiveResult(loadedAnomalies[0]);
+        }
+      }
+
+      // 3. Build Reports from Anomalies & Work Orders
+      const compiledReports = loadedAnomalies.map((anom, idx) => ({
+        id: `REP-2026-${String(idx + 1).padStart(3, "0")}`,
+        assessmentId: anom.id,
+        validation_id: anom.validation_id,
+        siteName: anom.siteName,
+        regionName: anom.regionName,
+        regionCode: anom.regionCode,
+        date: anom.date,
+        damageType: anom.damageType,
+        severity: anom.severity,
+        confidence: typeof anom.confidence === "number" ? `${(anom.confidence * 100).toFixed(0)}%` : anom.confidence,
+        emergencyLevel: anom.emergencyLevel,
+        status: anom.status === "Confirmed" ? "Assessed & Verified" : "Generated",
+        expertName: "Dr. A. Sharma",
+        summary: anom.recommendation,
+      }));
+      setReports(compiledReports);
+
+      // 4. Derive dynamic notifications from anomalies and system alerts
+      const derivedNotifs = [];
+      loadedAnomalies.forEach((anom) => {
+        if (anom.severity === "High" || anom.emergencyLevel === "Critical") {
+          derivedNotifs.push({
+            id: `notif_${anom.id}`,
+            eventKey: `crit_${anom.id}`,
+            title: "CRITICAL DAMAGE DETECTED",
+            description: `${anom.regionName} [${anom.regionCode}] recorded ${anom.damageType} (AI Confidence: ${(anom.confidence * 100).toFixed(0)}%).`,
+            time: anom.date,
+            priority: "CRITICAL",
+            read: false,
+            link: "/expert/results",
+          });
+        }
+      });
+
+      if (workOrdersData.status === "fulfilled" && Array.isArray(workOrdersData.value)) {
+        workOrdersData.value.forEach((wo) => {
+          derivedNotifs.push({
+            id: `notif_wo_${wo.id}`,
+            eventKey: `wo_${wo.id}`,
+            title: `WORK ORDER [${wo.priority}]: ${wo.status}`,
+            description: wo.description || "Conservation repair order generated.",
+            time: wo.created_at ? wo.created_at.split("T")[0] : "Recent",
+            priority: wo.priority === "HIGH" || wo.priority === "URGENT" ? "URGENT" : "INFORMATION",
+            read: false,
+            link: "/reports",
+          });
+        });
+      }
+
+      setNotifications(derivedNotifs);
+    } catch (err) {
+      console.error("Failed to load initial data from backend API:", err);
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [activeSiteId]);
 
   // Initialize Auth from stored JWT session, URL params, or backend on mount
   useEffect(() => {
@@ -61,7 +186,7 @@ export function AppProvider({ children }) {
               title: isAdm ? "Director General (ASI)" : "Lead Conservator (ASI)",
               role: isAdm ? "ADMINISTRATOR" : "CONSERVATION_EXPERT",
               is_active: userProfile.is_active,
-              isGoogleUser: true
+              isGoogleUser: true,
             });
             setIsAuthenticated(true);
           }
@@ -84,7 +209,7 @@ export function AppProvider({ children }) {
                   title: isAdm ? "Director General (ASI)" : "Lead Conservator (ASI)",
                   role: isAdm ? "ADMINISTRATOR" : "CONSERVATION_EXPERT",
                   is_active: userProfile.is_active,
-                  isGoogleUser: true
+                  isGoogleUser: true,
                 });
                 setIsAuthenticated(true);
               }
@@ -102,60 +227,13 @@ export function AppProvider({ children }) {
         setIsAuthenticated(false);
       }
       setIsAuthLoading(false);
+
+      // Load DB records
+      await refreshAppData();
     }
 
     initAuth();
-  }, []);
-
-  // Application Global Core State
-  const [heritageSites, setHeritageSites] = useState(mockHeritageSites);
-  const [architecturalRegions, setArchitecturalRegions] = useState(mockArchitecturalRegions);
-  const [assessments, setAssessments] = useState(mockAssessments);
-  const [reports, setReports] = useState(mockReports);
-  const [notifications, setNotifications] = useState(mockNotifications);
-
-  // AI Perception Pipeline Progress State
-  const [pipelineStep, setPipelineStep] = useState(1);
-  const [isPipelineComplete, setIsPipelineComplete] = useState(false);
-
-  // Heritage Site Requests (Expert -> Admin Workflow)
-  const [siteRequests, setSiteRequests] = useState([
-    {
-      id: "REQ-2026-001",
-      expertName: "Dr. A. Sharma",
-      expertEmail: "a.sharma@asi.gov.in",
-      siteName: "Kailasanathar Temple, Kanchipuram",
-      location: "Kanchipuram, Tamil Nadu",
-      circle: "ASI Chennai Circle",
-      material: "Sandstone & Mortar",
-      category: "State Protected Structural Site",
-      description: "7th-century Pallava dynasty architectural monument with deteriorating sandstone carvings.",
-      image: "https://images.unsplash.com/photo-1627894099419-f5ebba5e3f42?auto=format&fit=crop&q=80&w=800",
-      status: "PENDING ADMIN APPROVAL",
-      createdAt: "2026-09-01 09:30"
-    }
-  ]);
-
-  // AI Assessment Engine System Status
-  const [aiEngineStatus, setAiEngineStatus] = useState({
-    online: true,
-    modelState: "READY"
-  });
-
-  // Selected Active Context
-  const [activeSiteId, setActiveSiteId] = useState("site_01");
-  const [pendingAnalysis, setPendingAnalysis] = useState(null);
-  const [activeResult, setActiveResult] = useState(mockAssessments[0]);
-
-  // Toast Notification Message State
-  const [toast, setToast] = useState(null);
-
-  const showToast = (message, type = "info") => {
-    setToast({ message, type });
-    setTimeout(() => {
-      setToast(null);
-    }, 4000);
-  };
+  }, [refreshAppData]);
 
   // Auth Handlers
   const loginWithGoogle = () => {
@@ -178,11 +256,12 @@ export function AppProvider({ children }) {
           title: isAdm ? "Director General (ASI)" : "Lead Conservator (ASI)",
           role: isAdm ? "ADMINISTRATOR" : "CONSERVATION_EXPERT",
           is_active: userProfile.is_active,
-          isGoogleUser: true
+          isGoogleUser: true,
         };
         setCurrentUser(mappedUser);
         setIsAuthenticated(true);
         showToast(`Welcome, ${mappedUser.name}! Signed in via Google.`);
+        await refreshAppData();
         return { success: true, user: mappedUser };
       }
       throw new Error("Unable to retrieve user profile from backend.");
@@ -200,7 +279,7 @@ export function AppProvider({ children }) {
         name: "S. Ranganathan",
         title: "Director General (ASI)",
         email: email,
-        role: "ADMINISTRATOR"
+        role: "ADMINISTRATOR",
       };
       setCurrentUser(user);
       setIsAuthenticated(true);
@@ -212,7 +291,7 @@ export function AppProvider({ children }) {
         name: "Dr. A. Sharma",
         title: "Lead Conservator (ASI)",
         email: email,
-        role: "CONSERVATION_EXPERT"
+        role: "CONSERVATION_EXPERT",
       };
       setCurrentUser(user);
       setIsAuthenticated(true);
@@ -227,7 +306,7 @@ export function AppProvider({ children }) {
       name: userData.fullName,
       title: userData.designation || "Conservation Officer",
       email: userData.email,
-      role: userData.role || "CONSERVATION_EXPERT"
+      role: userData.role || "CONSERVATION_EXPERT",
     };
     setCurrentUser(newUser);
     setIsAuthenticated(true);
@@ -253,7 +332,7 @@ export function AppProvider({ children }) {
       ...prev,
       name: updatedData.name || prev.name,
       email: updatedData.email || prev.email,
-      title: updatedData.title || prev.title
+      title: updatedData.title || prev.title,
     }));
     showToast("USER PROFILE UPDATED SUCCESSFULLY.");
   };
@@ -271,82 +350,106 @@ export function AppProvider({ children }) {
     return { success: true };
   };
 
-  // Heritage Sites CRUD Handlers
-  const addHeritageSite = (siteData) => {
-    const newId = `site_${String(heritageSites.length + 1).padStart(2, "0")}`;
-    const newCode = `HST-0${heritageSites.length + 1}`;
-    const newSite = {
-      id: newId,
-      code: newCode,
-      name: siteData.name,
-      location: siteData.location,
-      circle: siteData.circle || "ASI Directorate",
-      material: siteData.material || "Granite & Freestone",
-      category: siteData.category || "UNESCO World Heritage Site",
-      description: siteData.description || "",
-      image: siteData.image || "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
-      status: siteData.status || "MONITOR",
-      regionsCount: 0,
-      lastAssessment: new Date().toISOString().split("T")[0]
-    };
-    setHeritageSites([newSite, ...heritageSites]);
-    showToast(`HERITAGE SITE "${siteData.name}" REGISTERED SUCCESSFULLY.`);
-    return newSite;
+  // Heritage Sites Direct DB CRUD Handlers
+  const addHeritageSite = async (siteData) => {
+    try {
+      const created = await api.createMonument({
+        name: siteData.name,
+        location_name: siteData.location,
+        heritage_status: siteData.category || "UNESCO World Heritage Site",
+        importance_tier: siteData.importance_tier || 1,
+      });
+      setHeritageSites((prev) => [created, ...prev]);
+      showToast(`HERITAGE SITE "${siteData.name}" REGISTERED IN DATABASE.`);
+      return created;
+    } catch (err) {
+      console.error("Failed to add heritage site to database:", err);
+      showToast("Failed to create heritage site: " + err.message, "error");
+      throw err;
+    }
   };
 
-  const updateHeritageSite = (siteId, updatedData) => {
-    setHeritageSites((prev) =>
-      prev.map((site) => (site.id === siteId ? { ...site, ...updatedData } : site))
-    );
-    showToast("HERITAGE SITE UPDATED SUCCESSFULLY.");
+  const updateHeritageSite = async (siteId, updatedData) => {
+    try {
+      const updated = await api.updateMonument(siteId, {
+        name: updatedData.name,
+        location_name: updatedData.location,
+        heritage_status: updatedData.category,
+      });
+      setHeritageSites((prev) =>
+        prev.map((site) => (site.id === siteId ? { ...site, ...updated } : site))
+      );
+      showToast("HERITAGE SITE UPDATED IN DATABASE.");
+    } catch (err) {
+      console.error("Failed to update heritage site:", err);
+      showToast("Failed to update site: " + err.message, "error");
+    }
   };
 
-  const deleteHeritageSite = (siteId) => {
-    const targetSite = heritageSites.find((s) => s.id === siteId);
-    setHeritageSites((prev) => prev.filter((site) => site.id !== siteId));
-    setArchitecturalRegions((prev) => prev.filter((reg) => reg.siteId !== siteId));
-    showToast(`HERITAGE SITE "${targetSite?.name || ""}" DELETED SUCCESSFULLY.`);
+  const deleteHeritageSite = async (siteId) => {
+    try {
+      const targetSite = heritageSites.find((s) => s.id === siteId);
+      await api.deleteMonument(siteId);
+      setHeritageSites((prev) => prev.filter((site) => site.id !== siteId));
+      setArchitecturalRegions((prev) => prev.filter((reg) => reg.monument_id !== siteId));
+      showToast(`HERITAGE SITE "${targetSite?.name || ""}" DELETED.`);
+    } catch (err) {
+      console.error("Failed to delete heritage site:", err);
+      showToast("Failed to delete site: " + err.message, "error");
+    }
   };
 
-  // Architectural Regions CRUD Handlers
-  const addArchitecturalRegion = (regionData) => {
-    const newId = `reg_${String(architecturalRegions.length + 1).padStart(2, "0")}`;
-    const newRegion = {
-      id: newId,
-      code: regionData.code || `REG-${String(architecturalRegions.length + 1).padStart(3, "0")}`,
-      siteId: regionData.siteId,
-      siteName: regionData.siteName,
-      name: regionData.name,
-      importance: regionData.importance || "Primary Load-Bearing Course",
-      riskLevel: regionData.riskLevel || "MEDIUM",
-      condition: regionData.riskLevel === "CRITICAL" ? "CRITICAL" : "MONITOR",
-      lastAssessment: new Date().toISOString().split("T")[0]
-    };
-    setArchitecturalRegions([newRegion, ...architecturalRegions]);
-
-    setHeritageSites((prev) =>
-      prev.map((site) =>
-        site.id === regionData.siteId
-          ? { ...site, regionsCount: (site.regionsCount || 0) + 1 }
-          : site
-      )
-    );
-
-    showToast(`ARCHITECTURAL REGION "${regionData.name}" CREATED SUCCESSFULLY.`);
-    return newRegion;
+  // Architectural Regions Direct DB CRUD Handlers
+  const addArchitecturalRegion = async (regionData) => {
+    try {
+      const created = await api.createRegion({
+        monument_id: regionData.siteId || regionData.monument_id,
+        name: regionData.name,
+        category: regionData.category || "facade",
+      });
+      setArchitecturalRegions((prev) => [created, ...prev]);
+      setHeritageSites((prev) =>
+        prev.map((site) =>
+          site.id === created.monument_id
+            ? { ...site, regions_count: (site.regions_count || 0) + 1 }
+            : site
+        )
+      );
+      showToast(`ARCHITECTURAL REGION "${regionData.name}" CREATED.`);
+      return created;
+    } catch (err) {
+      console.error("Failed to create region:", err);
+      showToast("Failed to create region: " + err.message, "error");
+      throw err;
+    }
   };
 
-  const updateArchitecturalRegion = (regionId, updatedData) => {
-    setArchitecturalRegions((prev) =>
-      prev.map((reg) => (reg.id === regionId ? { ...reg, ...updatedData } : reg))
-    );
-    showToast("ARCHITECTURAL REGION UPDATED SUCCESSFULLY.");
+  const updateArchitecturalRegion = async (regionId, updatedData) => {
+    try {
+      const updated = await api.updateRegion(regionId, {
+        name: updatedData.name,
+        category: updatedData.category,
+      });
+      setArchitecturalRegions((prev) =>
+        prev.map((reg) => (reg.id === regionId ? { ...reg, ...updated } : reg))
+      );
+      showToast("ARCHITECTURAL REGION UPDATED.");
+    } catch (err) {
+      console.error("Failed to update region:", err);
+      showToast("Failed to update region: " + err.message, "error");
+    }
   };
 
-  const deleteArchitecturalRegion = (regionId) => {
-    const targetRegion = architecturalRegions.find((r) => r.id === regionId);
-    setArchitecturalRegions((prev) => prev.filter((r) => r.id !== regionId));
-    showToast(`ARCHITECTURAL REGION "${targetRegion?.name || ""}" DELETED SUCCESSFULLY.`);
+  const deleteArchitecturalRegion = async (regionId) => {
+    try {
+      const targetRegion = architecturalRegions.find((r) => r.id === regionId);
+      await api.deleteRegion(regionId);
+      setArchitecturalRegions((prev) => prev.filter((r) => r.id !== regionId));
+      showToast(`ARCHITECTURAL REGION "${targetRegion?.name || ""}" DELETED.`);
+    } catch (err) {
+      console.error("Failed to delete region:", err);
+      showToast("Failed to delete region: " + err.message, "error");
+    }
   };
 
   // AI Pipeline Step Progression Handlers
@@ -372,20 +475,16 @@ export function AppProvider({ children }) {
     setIsPipelineComplete(false);
   };
 
-  // Deduplicated Notification Creation Helper (Change 5)
+  // Deduplicated Notification Creation Helper
   const addNotificationDeduplicated = (notifObj) => {
     setNotifications((prev) => {
-      // Check if duplicate notification exists by eventKey or requestId or identical description
       const isDuplicate = prev.some(
         (n) =>
           (notifObj.eventKey && n.eventKey === notifObj.eventKey) ||
           (notifObj.requestId && n.requestId === notifObj.requestId) ||
           (n.title === notifObj.title && n.description === notifObj.description)
       );
-
-      if (isDuplicate) {
-        return prev;
-      }
+      if (isDuplicate) return prev;
       return [notifObj, ...prev];
     });
   };
@@ -403,12 +502,14 @@ export function AppProvider({ children }) {
       material: requestData.material || "Sandstone & Mortar",
       category: requestData.category || "State Protected Structural Site",
       description: requestData.description || "",
-      image: requestData.image || "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
+      image:
+        requestData.image ||
+        "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
       status: "PENDING ADMIN APPROVAL",
-      createdAt: new Date().toLocaleString("en-US", { hour12: false })
+      createdAt: new Date().toLocaleString("en-US", { hour12: false }),
     };
 
-    setSiteRequests([newReq, ...siteRequests]);
+    setSiteRequests((prev) => [newReq, ...prev]);
 
     const adminNotif = {
       id: `notif_req_${newReqId}`,
@@ -420,7 +521,7 @@ export function AppProvider({ children }) {
       priority: "URGENT",
       read: false,
       link: "/admin/heritage-sites",
-      requestId: newReqId
+      requestId: newReqId,
     };
 
     addNotificationDeduplicated(adminNotif);
@@ -444,7 +545,7 @@ export function AppProvider({ children }) {
         time: "Just now",
         priority: "INFORMATION",
         read: false,
-        link: "/dashboard"
+        link: "/dashboard",
       };
       addNotificationDeduplicated(expertNotif);
     }
@@ -470,7 +571,7 @@ export function AppProvider({ children }) {
         time: "Just now",
         priority: "CRITICAL",
         read: false,
-        link: "/notifications"
+        link: "/notifications",
       };
       addNotificationDeduplicated(expertNotif);
     }
@@ -478,10 +579,12 @@ export function AppProvider({ children }) {
     showToast(`Site Request Rejected. Reason: ${reason}`);
   };
 
-  const approveAndCreateSiteFromRequest = (requestId, siteData) => {
-    const createdSite = addHeritageSite(siteData);
+  const approveAndCreateSiteFromRequest = async (requestId, siteData) => {
+    const createdSite = await addHeritageSite(siteData);
     setSiteRequests((prev) =>
-      prev.map((req) => (req.id === requestId ? { ...req, status: "APPROVED / SITE CREATED" } : req))
+      prev.map((req) =>
+        req.id === requestId ? { ...req, status: "APPROVED / SITE CREATED" } : req
+      )
     );
 
     const targetReq = siteRequests.find((r) => r.id === requestId);
@@ -495,7 +598,7 @@ export function AppProvider({ children }) {
         time: "Just now",
         priority: "INFORMATION",
         read: false,
-        link: "/dashboard"
+        link: "/dashboard",
       };
       addNotificationDeduplicated(expertNotif);
     }
@@ -505,12 +608,18 @@ export function AppProvider({ children }) {
   const recordAssessmentResult = (resultData) => {
     setActiveResult(resultData);
     setAssessments((prev) => {
-      const exists = prev.some((a) => a.id === resultData.id);
-      if (exists) return prev;
+      const exists = prev.some((a) => a.id === resultData.id || a.validation_id === resultData.validation_id);
+      if (exists) {
+        return prev.map((a) => (a.id === resultData.id || a.validation_id === resultData.validation_id ? resultData : a));
+      }
       return [resultData, ...prev];
     });
 
-    if (resultData.severity === "High" || resultData.severity === "Critical" || resultData.emergencyLevel === "Critical") {
+    if (
+      resultData.severity === "High" ||
+      resultData.severity === "Critical" ||
+      resultData.emergencyLevel === "Critical"
+    ) {
       const autoNotif = {
         id: `notif_auto_${resultData.id}`,
         eventKey: `crit_${resultData.id}`,
@@ -519,36 +628,54 @@ export function AppProvider({ children }) {
         time: "Just now",
         priority: "CRITICAL",
         read: false,
-        link: "/expert/results"
+        link: "/expert/results",
       };
       addNotificationDeduplicated(autoNotif);
     }
   };
 
-  const updateAssessmentStatus = (assessmentId, newStatus, expertNotes = "") => {
-    setAssessments((prev) =>
-      prev.map((item) =>
-        item.id === assessmentId ? { ...item, status: newStatus, expertNotes } : item
-      )
-    );
-    setActiveResult((prev) => (prev ? { ...prev, status: newStatus, expertNotes } : prev));
-    showToast(`Assessment ${assessmentId} status updated to ${newStatus}.`);
+  const updateAssessmentStatus = async (assessmentId, newStatus, expertNotes = "") => {
+    try {
+      const target = assessments.find((a) => a.id === assessmentId);
+      if (target?.validation_id) {
+        await api.updateAnomalyStatus(target.validation_id, {
+          status: newStatus,
+          is_confirmed: newStatus === "Confirmed",
+        });
+      }
+
+      setAssessments((prev) =>
+        prev.map((item) =>
+          item.id === assessmentId ? { ...item, status: newStatus, expertNotes } : item
+        )
+      );
+      setActiveResult((prev) => (prev ? { ...prev, status: newStatus, expertNotes } : prev));
+      showToast(`Assessment ${assessmentId} status updated to ${newStatus}.`);
+    } catch (err) {
+      console.error("Failed to update assessment status:", err);
+      showToast("Failed to update status: " + err.message, "error");
+    }
   };
 
   const generateReportFromAssessment = (assessmentObj) => {
     const newReport = {
       id: `REP-2026-${String(reports.length + 1).padStart(3, "0")}`,
       assessmentId: assessmentObj.id,
+      validation_id: assessmentObj.validation_id,
       siteName: assessmentObj.siteName,
       regionName: assessmentObj.regionName,
+      regionCode: assessmentObj.regionCode,
       date: new Date().toISOString().split("T")[0],
       damageType: assessmentObj.damageType,
       severity: assessmentObj.severity,
       emergencyLevel: assessmentObj.emergencyLevel,
-      confidence: typeof assessmentObj.confidence === "number" ? `${(assessmentObj.confidence * 100).toFixed(0)}%` : assessmentObj.confidence,
+      confidence:
+        typeof assessmentObj.confidence === "number"
+          ? `${(assessmentObj.confidence * 100).toFixed(0)}%`
+          : assessmentObj.confidence,
       expertName: currentUser?.name || "Dr. A. Sharma",
       summary: assessmentObj.recommendation || "Immediate conservation intervention recommended.",
-      status: "Assessed & Verified"
+      status: "Assessed & Verified",
     };
 
     setReports([newReport, ...reports]);
@@ -572,6 +699,8 @@ export function AppProvider({ children }) {
         currentUser,
         isAuthenticated,
         isAuthLoading,
+        isLoadingData,
+        refreshAppData,
         loginWithGoogle,
         handleAuthCallback,
         login,
@@ -625,7 +754,7 @@ export function AppProvider({ children }) {
         setActiveResult,
 
         toast,
-        showToast
+        showToast,
       }}
     >
       {children}

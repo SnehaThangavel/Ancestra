@@ -1,40 +1,57 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 import { ImageUploader } from "../../components/expert/ImageUploader";
 import { SectionCard } from "../../components/common/SectionCard";
-import { Cpu, ArrowRight, Info, XCircle } from "lucide-react";
+import { Cpu, ArrowRight, XCircle, Database } from "lucide-react";
 
 export function ImageAnalysisPage() {
   const navigate = useNavigate();
   const { heritageSites, architecturalRegions, setPendingAnalysis, aiEngineStatus } = useApp();
 
-  const [selectedSiteId, setSelectedSiteId] = useState(heritageSites[0]?.id || "site_01");
-  const filteredRegions = architecturalRegions.filter((r) => r.siteId === selectedSiteId);
-  const [selectedRegionId, setSelectedRegionId] = useState(filteredRegions[0]?.id || "reg_01");
-  
+  const [selectedSiteId, setSelectedSiteId] = useState(heritageSites[0]?.id || "");
+  const filteredRegions = architecturalRegions.filter(
+    (r) => (r.monument_id && r.monument_id === selectedSiteId) || (r.siteId && r.siteId === selectedSiteId)
+  );
+  const [selectedRegionId, setSelectedRegionId] = useState(filteredRegions[0]?.id || "");
+
+  useEffect(() => {
+    if (heritageSites.length > 0 && !selectedSiteId) {
+      setSelectedSiteId(heritageSites[0].id);
+    }
+  }, [heritageSites, selectedSiteId]);
+
+  useEffect(() => {
+    if (filteredRegions.length > 0) {
+      const exists = filteredRegions.some((r) => r.id === selectedRegionId);
+      if (!exists) {
+        setSelectedRegionId(filteredRegions[0].id);
+      }
+    }
+  }, [filteredRegions, selectedRegionId]);
+
   const [captureDate, setCaptureDate] = useState(new Date().toISOString().split("T")[0]);
   const [sensorSpec, setSensorSpec] = useState("Calibrated DSLR / Mirrorless (60MP+ Full-Frame)");
   const [observationNotes, setObservationNotes] = useState("");
 
   const [selectedImageData, setSelectedImageData] = useState({
     url: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
-    name: "shore_temple_vimana_east_macro.jpg"
+    name: "shore_temple_vimana_east_macro.jpg",
   });
 
   const presetSamples = [
     {
       name: "Shore Temple Crack",
-      url: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
+      url: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
     },
     {
       name: "Konark Roof Spalling",
-      url: "https://images.unsplash.com/photo-1596402184320-417e7178b2cd?auto=format&fit=crop&q=80&w=800"
+      url: "https://images.unsplash.com/photo-1596402184320-417e7178b2cd?auto=format&fit=crop&q=80&w=800",
     },
     {
       name: "Hampi Chariot Fractures",
-      url: "https://images.unsplash.com/photo-1627894099419-f5ebba5e3f42?auto=format&fit=crop&q=80&w=800"
-    }
+      url: "https://images.unsplash.com/photo-1627894099419-f5ebba5e3f42?auto=format&fit=crop&q=80&w=800",
+    },
   ];
 
   const canSubmit = aiEngineStatus.online && aiEngineStatus.modelState !== "ERROR" && aiEngineStatus.modelState !== "MAINTENANCE";
@@ -54,7 +71,7 @@ export function ImageAnalysisPage() {
       sensorSpec,
       notes: observationNotes,
       imageUrl: selectedImageData.url,
-      imageFile: selectedImageData.file
+      imageFile: selectedImageData.file,
     });
 
     navigate("/expert/ai-analysis");
@@ -62,7 +79,7 @@ export function ImageAnalysisPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      {/* Header (No Module ID) */}
+      {/* Header */}
       <div>
         <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
           IMAGE ANALYSIS & OBSERVATION INTAKE
@@ -94,8 +111,11 @@ export function ImageAnalysisPage() {
                   className="form-select"
                   value={selectedSiteId}
                   onChange={(e) => {
-                    setSelectedSiteId(e.target.value);
-                    const regs = architecturalRegions.filter((r) => r.siteId === e.target.value);
+                    const newSiteId = e.target.value;
+                    setSelectedSiteId(newSiteId);
+                    const regs = architecturalRegions.filter(
+                      (r) => (r.monument_id && r.monument_id === newSiteId) || (r.siteId && r.siteId === newSiteId)
+                    );
                     if (regs.length > 0) setSelectedRegionId(regs[0].id);
                   }}
                 >
@@ -114,11 +134,15 @@ export function ImageAnalysisPage() {
                   value={selectedRegionId}
                   onChange={(e) => setSelectedRegionId(e.target.value)}
                 >
-                  {filteredRegions.map((reg) => (
-                    <option key={reg.id} value={reg.id}>
-                      [{reg.code}] {reg.name}
-                    </option>
-                  ))}
+                  {filteredRegions.length > 0 ? (
+                    filteredRegions.map((reg) => (
+                      <option key={reg.id} value={reg.id}>
+                        [{reg.code || "REG"}] {reg.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No regions registered for this monument</option>
+                  )}
                 </select>
               </div>
             </div>
@@ -187,15 +211,15 @@ export function ImageAnalysisPage() {
               </div>
               <div style={styles.pipelineItem}>
                 <span style={styles.pipelineNum}>02.</span>
-                <span>Spatial coordinate anchoring to historical region polygon</span>
+                <span>Spatial coordinate anchoring & sequential ORB alignment</span>
               </div>
               <div style={styles.pipelineItem}>
                 <span style={styles.pipelineNum}>03.</span>
-                <span>Lithic damage segmentation (cracks, salt efflorescence, spalling)</span>
+                <span>Lithic damage segmentation & SSIM defect bounding box extraction</span>
               </div>
               <div style={styles.pipelineItem}>
                 <span style={styles.pipelineNum}>04.</span>
-                <span>Cross-temporal consensus weight calculation</span>
+                <span>Consensus state update & structural health index calculation</span>
               </div>
             </div>
 
@@ -207,24 +231,24 @@ export function ImageAnalysisPage() {
                 padding: "12px",
                 marginTop: "16px",
                 opacity: canSubmit ? 1 : 0.5,
-                cursor: canSubmit ? "pointer" : "not-allowed"
+                cursor: canSubmit ? "pointer" : "not-allowed",
               }}
               disabled={!canSubmit}
             >
-              <span>{canSubmit ? "Submit & Run Simulated Analysis" : "AI Engine Offline / Maintenance"}</span>
+              <span>{canSubmit ? "Submit & Run AI Perception Pipeline" : "AI Engine Offline / Maintenance"}</span>
               <ArrowRight size={14} />
             </button>
           </div>
 
           <div style={styles.simCard}>
             <div style={styles.simHeader}>
-              <Info size={15} color="#8E857B" />
+              <Database size={15} color="#8E857B" />
               <span style={{ fontSize: "11px", fontWeight: 700, color: "#8E857B", letterSpacing: "0.06em" }}>
-                SIMULATION NOTE
+                LIVE DATABASE PIPELINE
               </span>
             </div>
             <p style={{ fontSize: "11.5px", color: "var(--text-secondary)", lineHeight: "1.4" }}>
-              In this development foundation phase, submitting this form will simulate perceptual analysis execution and redirect to the structural assessment result record.
+              Submitting this intake form connects directly to the backend FastAPI server, saves the observation to PostgreSQL, executes Module 1 sequential alignment and Module 4 SSIM defect validation.
             </p>
           </div>
         </div>
@@ -243,7 +267,7 @@ const styles = {
     alignItems: "center",
     gap: "10px",
     fontSize: "12px",
-    color: "#DC2626"
+    color: "#DC2626",
   },
   pipelineHeader: {
     display: "flex",
@@ -251,35 +275,35 @@ const styles = {
     gap: "8px",
     paddingBottom: "10px",
     borderBottom: "1px solid var(--border-light)",
-    marginBottom: "12px"
+    marginBottom: "12px",
   },
   pipelineSteps: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px"
+    gap: "10px",
   },
   pipelineItem: {
     display: "flex",
     alignItems: "flex-start",
     gap: "6px",
     fontSize: "11.5px",
-    color: "var(--text-secondary)"
+    color: "var(--text-secondary)",
   },
   pipelineNum: {
     fontFamily: "var(--font-mono)",
     fontWeight: "700",
-    color: "#8E857B"
+    color: "#8E857B",
   },
   simCard: {
     backgroundColor: "#F5F1E9",
     border: "1px solid #E3DDD3",
     borderRadius: "6px",
-    padding: "14px"
+    padding: "14px",
   },
   simHeader: {
     display: "flex",
     alignItems: "center",
     gap: "6px",
-    marginBottom: "6px"
-  }
+    marginBottom: "6px",
+  },
 };

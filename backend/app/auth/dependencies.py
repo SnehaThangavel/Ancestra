@@ -1,6 +1,7 @@
 """FastAPI dependency for verifying JWT bearer tokens and injecting the authenticated user."""
 
 import uuid
+from typing import Optional
 from fastapi import Request, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -78,11 +79,34 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account is deactivated.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     return user
+
+
+async def get_current_user_optional(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """Optional user dependency: returns active User if valid token is provided, or None."""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return None
+
+    parts = auth_header.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+
+    try:
+        token = parts[1]
+        payload = decode_token(token)
+        if payload.get("type") != "access":
+            return None
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            return None
+        user_uuid = uuid.UUID(user_id_str)
+        user = db.query(User).filter(User.id == user_uuid).first()
+        if user and user.is_active:
+            return user
+    except Exception:
+        return None
+    return None

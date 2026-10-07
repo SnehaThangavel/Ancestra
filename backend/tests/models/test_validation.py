@@ -51,6 +51,6 @@ def test_anomaly_validation_model_persistence(db_session: Session) -> None:
     assert val.anomaly_type == "crack"
     assert val.severity_score == 0.75
     assert len(val.corroborating_observation_ids) == 2
-    assert val.corroborating_observation_ids[0] == obs_id1
+    assert str(val.corroborating_observation_ids[0]) == str(obs_id1)
     assert val.defect_polygon["coordinates"][0] == [10, 10]
     assert val.region.name == "cave1_fresco_wall"

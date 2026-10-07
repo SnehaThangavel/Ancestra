@@ -21,34 +21,34 @@ export function RegionModal({ isOpen, onClose, regionToEdit = null }) {
 
   const [formData, setFormData] = useState({
     code: "",
-    siteId: heritageSites[0]?.id || "site_01",
-    siteName: heritageSites[0]?.name || "Shore Temple, Mahabalipuram",
+    siteId: heritageSites[0]?.id || "",
+    siteName: heritageSites[0]?.name || "",
     name: "",
     importance: "Primary Load-Bearing Course",
-    riskLevel: "MEDIUM"
+    riskLevel: "MEDIUM",
   });
 
   useEffect(() => {
     if (regionToEdit) {
       setFormData({
         code: regionToEdit.code || "REG-001",
-        siteId: regionToEdit.siteId || heritageSites[0]?.id,
-        siteName: regionToEdit.siteName || heritageSites[0]?.name,
+        siteId: regionToEdit.monument_id || regionToEdit.siteId || heritageSites[0]?.id || "",
+        siteName: regionToEdit.site_name || regionToEdit.siteName || heritageSites[0]?.name || "",
         name: regionToEdit.name || "",
         importance: regionToEdit.importance || "Primary Load-Bearing Course",
-        riskLevel: regionToEdit.riskLevel || "MEDIUM"
+        riskLevel: regionToEdit.risk_level || regionToEdit.riskLevel || "MEDIUM",
       });
     } else {
       setFormData({
         code: generateUniqueRegionId(),
-        siteId: heritageSites[0]?.id || "site_01",
-        siteName: heritageSites[0]?.name || "Shore Temple, Mahabalipuram",
+        siteId: heritageSites[0]?.id || "",
+        siteName: heritageSites[0]?.name || "",
         name: "",
         importance: "Primary Load-Bearing Course",
-        riskLevel: "MEDIUM"
+        riskLevel: "MEDIUM",
       });
     }
-  }, [regionToEdit, isOpen, architecturalRegions]);
+  }, [regionToEdit, isOpen, architecturalRegions, heritageSites]);
 
   const handleSiteChange = (e) => {
     const sId = e.target.value;
@@ -56,18 +56,18 @@ export function RegionModal({ isOpen, onClose, regionToEdit = null }) {
     setFormData({
       ...formData,
       siteId: sId,
-      siteName: siteObj ? siteObj.name : ""
+      siteName: siteObj ? siteObj.name : "",
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name) return;
 
     if (isEditing) {
-      updateArchitecturalRegion(regionToEdit.id, formData);
+      await updateArchitecturalRegion(regionToEdit.id, formData);
     } else {
-      addArchitecturalRegion(formData);
+      await addArchitecturalRegion(formData);
     }
 
     onClose();
@@ -93,7 +93,7 @@ export function RegionModal({ isOpen, onClose, regionToEdit = null }) {
                 color: "#78716C",
                 fontFamily: "var(--font-mono)",
                 fontWeight: "700",
-                cursor: "not-allowed"
+                cursor: "not-allowed",
               }}
               value={formData.code}
               readOnly

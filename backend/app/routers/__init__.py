@@ -7,6 +7,8 @@ from app.routers.consensus import router as consensus_router
 from app.routers.validation import router as validation_router
 from app.routers.temporal import router as temporal_router
 from app.routers.orchestrator import router as orchestrator_router
+from app.routers.monuments import router as monuments_router
+from app.routers.regions import router as regions_router
 
 __all__ = [
     "auth_router",
@@ -16,5 +18,7 @@ __all__ = [
     "validation_router",
     "temporal_router",
     "orchestrator_router",
+    "monuments_router",
+    "regions_router",
 ]
 

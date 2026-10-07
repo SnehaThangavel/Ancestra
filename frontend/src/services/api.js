@@ -171,59 +171,172 @@ export const api = {
   },
 
   // ==========================================
+  // Monuments (Heritage Sites) Direct DB Endpoints
+  // ==========================================
+  async getMonuments(search = "") {
+    const query = search ? `?search=${encodeURIComponent(search)}` : "";
+    return apiRequest(`/monuments${query}`);
+  },
+
+  async getMonument(monumentId) {
+    return apiRequest(`/monuments/${monumentId}`);
+  },
+
+  async createMonument(data) {
+    return apiRequest("/monuments", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateMonument(monumentId, data) {
+    return apiRequest(`/monuments/${monumentId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteMonument(monumentId) {
+    return apiRequest(`/monuments/${monumentId}`, {
+      method: "DELETE",
+    });
+  },
+
+  // ==========================================
+  // Architectural Regions Direct DB Endpoints
+  // ==========================================
+  async getRegions(monumentId = null, search = "") {
+    const params = new URLSearchParams();
+    if (monumentId) params.append("monument_id", monumentId);
+    if (search) params.append("search", search);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return apiRequest(`/regions${qs}`);
+  },
+
+  async getRegion(regionId) {
+    return apiRequest(`/regions/${regionId}`);
+  },
+
+  async createRegion(data) {
+    return apiRequest("/regions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateRegion(regionId, data) {
+    return apiRequest(`/regions/${regionId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteRegion(regionId) {
+    return apiRequest(`/regions/${regionId}`, {
+      method: "DELETE",
+    });
+  },
+
+  // ==========================================
   // Module 1: Ingestion & Observations
   // ==========================================
-  async uploadObservation({ monumentId, imageFile, metadata = {} }) {
+  async uploadObservation({ monumentId, regionId, imageFile, metadata = {} }) {
     const formData = new FormData();
     formData.append("monument_id", monumentId);
+    if (regionId) {
+      formData.append("region_id", regionId);
+    }
     formData.append("file", imageFile);
 
     if (metadata && Object.keys(metadata).length > 0) {
-      formData.append("metadata", JSON.stringify(metadata));
+      formData.append("exif_override", JSON.stringify(metadata));
     }
 
-    return apiRequest("/observations/upload", {
+    return apiRequest("/ingestion/upload", {
       method: "POST",
       body: formData,
     });
   },
 
-  async listObservations(monumentId) {
-    return apiRequest(`/observations/${monumentId}`);
+  async suggestRegion({ monumentId, imageFile }) {
+    const formData = new FormData();
+    formData.append("monument_id", monumentId);
+    formData.append("file", imageFile);
+
+    return apiRequest("/ingestion/suggest-region", {
+      method: "POST",
+      body: formData,
+    });
   },
 
   // ==========================================
-  // Module 2: Consensus & Memory
+  // Module 3: Consensus Memory & Baseline Management
   // ==========================================
   async getConsensus(regionId) {
     return apiRequest(`/consensus/${regionId}`);
   },
 
-  // ==========================================
-  // Module 3: Anomaly Validation
-  // ==========================================
-  async validateAnomaly({ anomalyId, validationStatus, validatorNotes = "", expertId = null }) {
-    return apiRequest("/validation/validate", {
+  async getRegionObservationHistory(regionId) {
+    return apiRequest(`/consensus/region/${regionId}/history`);
+  },
+
+  async resetBaseline(regionId, reason = "") {
+    return apiRequest(`/consensus/${regionId}/reset-baseline`, {
       method: "POST",
-      body: JSON.stringify({
-        anomaly_id: anomalyId,
-        validation_status: validationStatus,
-        validator_notes: validatorNotes,
-        expert_id: expertId,
-      }),
+      body: JSON.stringify({ reason }),
     });
   },
 
   // ==========================================
-  // Module 4: Temporal Evolution
+  // Module 4: SSIM Anomaly Validation & Assessments
   // ==========================================
-  async getDeteriorationTrend(regionId) {
-    return apiRequest(`/temporal/trend/${regionId}`);
+  async verifyObservation({ observationId, regionId = null, ssimThreshold = 0.90 }) {
+    return apiRequest("/validation/verify", {
+      method: "POST",
+      body: JSON.stringify({
+        observation_id: observationId,
+        region_id: regionId,
+        ssim_threshold: ssimThreshold,
+      }),
+    });
+  },
+
+  async getAnomalies() {
+    return apiRequest("/validation/anomalies");
+  },
+
+  async getRegionAnomalies(regionId) {
+    return apiRequest(`/validation/region/${regionId}`);
+  },
+
+  async getObservationAnomaly(observationId) {
+    return apiRequest(`/validation/observation/${observationId}`);
+  },
+
+  async updateAnomalyStatus(validationId, data) {
+    return apiRequest(`/validation/${validationId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   },
 
   // ==========================================
-  // Module 5: Orchestrator & Work Orders
+  // Module 5: Temporal Evolution
   // ==========================================
+  async getDeteriorationTrend(regionId) {
+    return apiRequest("/temporal/trend", {
+      method: "POST",
+      body: JSON.stringify({ region_id: regionId }),
+    });
+  },
+
+  // ==========================================
+  // Module 6: Orchestrator & Work Orders
+  // ==========================================
+  async getWorkOrders() {
+    return apiRequest("/orchestrator/work-orders");
+  },
+
   async createWorkOrder({ monumentId, regionId, anomalyId = null, priority = "MEDIUM", description = "", assignedTo = null }) {
     return apiRequest("/orchestrator/work-orders", {
       method: "POST",
@@ -236,6 +349,10 @@ export const api = {
         assigned_to: assignedTo,
       }),
     });
+  },
+
+  async getWorkOrderEvidence(workOrderId) {
+    return apiRequest(`/orchestrator/work-orders/${workOrderId}/evidence`);
   },
 };
 

@@ -2,9 +2,11 @@
 
 import uuid
 from datetime import datetime, timezone
+from typing import Optional, List
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, CheckConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+from sqlalchemy.types import JSON
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -28,13 +30,13 @@ class AnomalyValidation(Base):
         nullable=False,
         index=True,
     )
-    anomaly_type = Column(String(64), nullable=False)  # crack, spalling, biological_growth, discoloration
+    anomaly_type = Column(String(64), nullable=False)  # crack, spalling, biological_growth, discoloration, structural_defect
     ssim_delta = Column(Float, nullable=True)
     severity_score = Column(Float, nullable=False)  # 0.0 to 1.0
     corroboration_count = Column(Integer, default=1, nullable=False)
-    corroborating_observation_ids = Column(ARRAY(UUID(as_uuid=True)), nullable=True)
-    is_confirmed = Column(Boolean, default=False, nullable=False)
-    defect_polygon = Column(JSONB, nullable=True)  # polygon / bounding coordinates of defect
+    corroborating_observation_ids = Column(ARRAY(UUID(as_uuid=True)).with_variant(JSON, "sqlite"), nullable=True)
+    is_confirmed = Column(Boolean, default=True, nullable=False)
+    defect_polygon = Column(JSONB().with_variant(JSON, "sqlite"), nullable=True)  # polygon / bounding coordinates of defect
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -53,7 +55,28 @@ class AnomalyValidation(Base):
     region = relationship("Region", back_populates="validations")
     work_orders = relationship("WorkOrder", back_populates="validation", cascade="all, delete-orphan")
 
-    # Compatibility properties
+    # Accessor properties
+    @property
+    def observation_id(self) -> Optional[uuid.UUID]:
+        """Get the primary observation ID associated with this anomaly."""
+        if self.corroborating_observation_ids and len(self.corroborating_observation_ids) > 0:
+            val = self.corroborating_observation_ids[0]
+            if isinstance(val, uuid.UUID):
+                return val
+            try:
+                return uuid.UUID(str(val))
+            except (ValueError, AttributeError):
+                return None
+        return None
+
+    @observation_id.setter
+    def observation_id(self, val: Optional[uuid.UUID]) -> None:
+        """Set the primary observation ID."""
+        if val is not None:
+            self.corroborating_observation_ids = [val]
+        else:
+            self.corroborating_observation_ids = []
+
     @property
     def mask_geometry(self):
         return self.defect_polygon

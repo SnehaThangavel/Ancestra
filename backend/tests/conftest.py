@@ -15,6 +15,12 @@ from app.models.user import User
 from app.auth.jwt_handler import create_access_token
 from app.main import app
 
+import json
+import sqlite3
+
+sqlite3.register_adapter(dict, json.dumps)
+sqlite3.register_adapter(uuid.UUID, lambda u: str(u))
+
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, ARRAY
@@ -41,6 +47,7 @@ try:
     test_engine = create_engine(
         TEST_DB_URL,
         pool_pre_ping=True,
+        json_serializer=lambda obj: json.dumps(obj, default=str),
     )
     with test_engine.connect() as _test_conn:
         pass
@@ -49,6 +56,7 @@ except Exception:
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
+        json_serializer=lambda obj: json.dumps(obj, default=str),
     )
 
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)

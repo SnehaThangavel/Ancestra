@@ -7,6 +7,8 @@ from app.schemas.consensus import ConsensusUpdateRequest, ConsensusStateResponse
 from app.schemas.validation import AnomalyValidationRequest, AnomalyValidationResponse
 from app.schemas.temporal import TemporalTrendRequest, TemporalTrendResponse
 from app.schemas.orchestrator import WorkOrderCreate, WorkOrderResponse, EvidenceLogResponse
+from app.schemas.monument import MonumentCreate, MonumentUpdate, MonumentResponse
+from app.schemas.region import RegionCreate, RegionUpdate, RegionResponse
 
 __all__ = [
     "TokenRefreshRequest",
@@ -28,4 +30,10 @@ __all__ = [
     "WorkOrderCreate",
     "WorkOrderResponse",
     "EvidenceLogResponse",
+    "MonumentCreate",
+    "MonumentUpdate",
+    "MonumentResponse",
+    "RegionCreate",
+    "RegionUpdate",
+    "RegionResponse",
 ]
