@@ -379,6 +379,7 @@ def test_ingestion_module_auto_scores_reliability(
         monument_id=str(sample_monument.id),
         user_id="test_user@heritage.org",
         db=db_session,
+        auto_score_reliability=True,
     )
 
     # Verify that the observation created in DB has reliability_score and reliability_factors populated

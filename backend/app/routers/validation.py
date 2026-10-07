@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.models.validation import AnomalyValidation
 from app.auth.dependencies import get_current_user, get_current_user_optional
 from app.modules.validation import get_validation_module
 from app.schemas.validation import AnomalyValidationRequest, AnomalyValidationResponse

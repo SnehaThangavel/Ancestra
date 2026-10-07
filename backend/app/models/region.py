@@ -19,6 +19,7 @@ class Region(Base):
     monument_id = Column(UUID(as_uuid=True), ForeignKey("monuments.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(128), nullable=False)
     category = Column(String(64), nullable=True)  # pillar, arch, facade, frieze, dome
+    image_url = Column(String(512), nullable=True)
     bounding_box = Column(JSONB, nullable=True)  # [x, y, w, h] or polygon coordinates
     reference_features = Column(JSONB, nullable=True)  # keypoint descriptors / reference embeddings
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now(), nullable=False)

@@ -22,6 +22,7 @@ class Monument(Base):
     longitude = Column(Float, nullable=True)
     heritage_status = Column(String(128), nullable=True)  # e.g. "UNESCO World Heritage Site", "National Monument"
     importance_tier = Column(Integer, default=1, nullable=False)  # 1 (Highest) to 5
+    image_url = Column(String(512), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=func.now(), server_default=func.now(), nullable=False)
 

@@ -959,7 +959,7 @@ class ImageIngestionModule:
         db: Optional[Session] = None,
         reference_regions: Optional[List[Dict[str, Any]]] = None,
         image_url: Optional[str] = None,
-        auto_score_reliability: bool = True,
+        auto_score_reliability: bool = False,
         auto_update_consensus: bool = True,
     ) -> ImageIngestionResponse:
         """Execute Module 1 ingestion pipeline for an expert-confirmed monument photograph.

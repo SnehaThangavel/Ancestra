@@ -1,144 +1,103 @@
-# Ancestra Backend (SESCI Architecture)
+# Ancestra Backend
 
-Production-grade Python backend implementing the **SESCI** (Spatio-temporal Evolutionary Structural Consensus & Inspection) architecture for heritage monument structural monitoring using crowdsourced photography, computer vision, and PostgreSQL.
-
----
-
-## 🏛️ Module-to-Patent-Claim Architecture Mapping
-
-| Module | System Component | Patent Claim Scope & Core Responsibility |
-| :--- | :--- | :--- |
-| **Module 1: Ingestion & Registration** | `app.modules.ingestion` | Automated image quality triage (blur/glare check), EXIF extraction, ORB feature matching, homography estimation, and perspective alignment against baseline monument geometries. |
-| **Module 2: Reliability Engine** | `app.modules.reliability_engine` | Dynamic multi-factor reliability scoring calculating $R_i \in [0, 1]$ across sensor fidelity, lighting conditions, vantage perspective angle, crowd credibility history, temporal relevance, and registration confidence. |
-| **Module 3: Consensus Memory** | `app.modules.consensus_memory` | Reliability-weighted continuous running Bayesian update of regional consensus representations ($C_t$), preserving true historical state while dampening transient anomalies. |
-| **Module 4: Anomaly Validation** | `app.modules.validation` | Multi-scale structural similarity (SSIM) anomaly detection, morphological edge deltas, crack/spalling localization, and multi-observer corroboration filtering. |
-| **Module 5: Temporal Evolution** | `app.modules.temporal_evolution` | Time-series trend analysis, deterioration velocity rate computation ($\frac{dD}{dt}$), defect growth extrapolation, and risk horizon forecasting. |
-| **Module 6: Orchestration & Dispatch** | `app.modules.orchestrator` | Multi-criteria urgency index scoring, automated conservation work-order generation, priority dispatching, and immutable SHA-256 hash-chained evidence log generation. |
-| **AI Upgrade: Foundation Models** | `app.ai` | Segment Anything Model (SAM) zero-shot architectural boundary segmentation and OpenCLIP semantic classification of monument components. |
+Production-grade FastAPI backend for **Ancestra**, an AI-assisted heritage monument structural monitoring platform designed for conservation experts and archaeologists.
 
 ---
 
-## 🧮 Module 2: Six-Factor Dynamic Reliability Coefficient Engine
+## 🏛️ System Architecture (Expert-Upload Flow)
 
-Module 2 (`app.modules.reliability_engine.ReliabilityEngineModule`) calculates a composite reliability coefficient $R_i \in [0, 1]$ for each crowdsourced photo observation. Downstream consensus memory and anomaly validation modules use $R_i$ to weight how much each photo updates the monument's historical health state.
+The current Ancestra architecture is centered around **expert-directed photo ingestion and structural inspection**:
 
-### Reliability Coefficient Formula
-
-$$R_i = \sum_{k=1}^6 w_k \cdot f_k \quad \text{where} \quad \sum_{k=1}^6 w_k = 1.0, \quad R_i \in [0.0, 1.0]$$
-
-| Factor ($f_k$) | Method Name | Description & Calculation Logic | Default Weight ($w_k$) |
-| :--- | :--- | :--- | :--- |
-| **1. Image Quality** ($f_{\text{quality}}$) | `compute_image_quality_factor` | Derived from Module 1's `overall_quality_score` with a non-linear power curve ($s^{1.5}$) so borderline quality photos are penalized disproportionately. | `0.25` (25%) |
-| **2. Geometric Consistency** ($f_{\text{geom}}$) | `compute_geometric_consistency_factor` | Derived from ORB/RANSAC `registration_confidence`. Returns fixed floor `0.1` on registration failure to retain weak signal. | `0.20` (20%) |
-| **3. Viewpoint Diversity** ($f_{\text{view}}$) | `compute_viewpoint_diversity_factor` | Compares vantage parameters (orientation, camera, source) against regional observations in a 90-day window. Rewards novel viewpoints; defaults to `0.5` if no history. | `0.10` (10%) |
-| **4. Temporal Relevance** ($f_{\text{temp}}$) | `compute_temporal_relevance_factor` | Exponential decay based on observation age ($\Delta t$) and half-life: $0.15 + 0.85 \cdot \exp(-\ln(2) \cdot \frac{\Delta t}{t_{1/2}})$, retaining non-zero historical baseline weight. | `0.15` (15%) |
-| **5. Environmental Similarity** ($f_{\text{env}}$) | `compute_environmental_similarity_factor` | Evaluates exposure deviation from the historical regional mean. Wild lighting swings score lower; defaults to `0.5` if $<3$ prior observations exist. | `0.10` (10%) |
-| **6. Consensus Agreement** ($f_{\text{agree}}$) | `compute_agreement_factor` | Structural/histogram similarity against region's current `ConsensusState` tensor. Defaults to `1.0` for initial baseline observations. | `0.20` (20%) |
-
-### Configuration & Weight Customization
-
-Factor weights and decay half-life are configured in `backend/app/config.py` (and overridable via `.env`):
-
-```python
-# app/config.py
-RELIABILITY_TEMPORAL_HALF_LIFE_DAYS: float = 180.0
-RELIABILITY_WEIGHTS: Dict[str, float] = {
-    "image_quality": 0.25,
-    "geometric_consistency": 0.20,
-    "viewpoint_diversity": 0.10,
-    "temporal_relevance": 0.15,
-    "environmental_similarity": 0.10,
-    "agreement": 0.20,
-}
+```
+[Expert Photo Upload]
+         │
+         ▼
+[Module 1: Ingestion & Registration]
+  ├── Image Quality Triage (Laplacian Blur Variance & Exposure/Glare Ratio)
+  ├── EXIF Metadata Extraction (Camera, Timestamp, GPS)
+  ├── AI Region Suggestion (SAM Segmenter + OpenCLIP Classifier)
+  └── Sequential Alignment (ORB Feature Matching & RANSAC Homography against prior observation)
+         │
+         ▼
+[Module 4: Anomaly Validation & Detection]
+  ├── Multi-Scale Structural Similarity (SSIM) Delta Analysis against Baseline
+  ├── Lithic Defect Localization (Crack / Spalling Bounding Box Generation)
+  └── Severity Scoring & Anomaly Type Classification
+         │
+         ▼
+[Module 5: Temporal Evolution]
+  ├── Historical Severity Time-Series Tracking
+  └── Deterioration Velocity Rate Computation (dD/dt)
+         │
+         ▼
+[Module 6: Work Order Orchestration]
+  ├── Multi-Criteria Urgency Index Calculation
+  ├── Conservation Action Plan & Work Order Dispatch
+  └── Immutable SHA-256 Hash-Chained Evidence Audit Trail (Genesis & Audit Blocks)
 ```
 
-A Pydantic validator (`@field_validator("RELIABILITY_WEIGHTS")`) enforces that factor weights sum to $1.0 \pm 10^{-4}$.
+### Active Core Modules
 
-### API Endpoint & Automated Hook
-
-- **Automated Upload Hook**: `ImageIngestionModule.ingest()` automatically invokes `ReliabilityEngineModule.compute_reliability()` immediately upon creating an `Observation` record in PostgreSQL.
-- **Standalone Recompute Endpoint**: `POST /api/v1/reliability/score/{observation_id}` allows recomputing reliability on demand (e.g. after consensus state updates or with custom weight overrides). Protected by JWT OAuth authentication.
+| Module | Python Path | Responsibilities in Current Flow |
+| :--- | :--- | :--- |
+| **Module 1: Ingestion & Registration** | `app.modules.ingestion` | Image decoding, quality filtering (blur/glare thresholds), EXIF parsing, AI-assisted zero-shot region suggestion, and sequential ORB/RANSAC alignment. |
+| **Module 4: Anomaly Validation** | `app.modules.validation` | Multi-scale SSIM comparison against baseline observation, structural anomaly thresholding, defect bounding box extraction, and severity scoring. |
+| **Module 5: Temporal Evolution** | `app.modules.temporal_evolution` | Time-series regression over regional damage observations, deterioration velocity rate ($\frac{dD}{dt}$) calculation, and trend estimation. |
+| **Module 6: Orchestration & Dispatch** | `app.modules.orchestrator` | Composite urgency scoring based on severity and importance tier, work order lifecycle management, and SHA-256 hash-chained evidence logs. |
+| **AI Foundation Models** | `app.ai` | Segment Anything Model (SAM `vit_b`) for architectural boundary mask segmentation and OpenCLIP (`ViT-B/32`) for component classification. |
+| **Authentication & Auth** | `app.routers.auth` | Google OAuth 2.0 handshake, user management, and JWT access/refresh token rotation. |
 
 ---
 
-## 🧠 Module 3: Reliability-Weighted Continuous Running Consensus Memory
+## ⚙️ Setup & Model Weights
 
-Module 3 (`app.modules.consensus_memory.ConsensusMemoryModule`) maintains an incrementally-updated baseline visual condition representation (`ConsensusState`) for each architectural region. Each incoming photograph updates this memory state proportionally to its Module 2 reliability score ($R_i$).
+### 1. SAM Model Checkpoint Download
 
-### Reliability-Adaptive Evidence Fusion Formula
+The AI region suggestion feature uses Meta AI's **Segment Anything Model (SAM)** `vit_b` architecture.
 
-$$\mathbf{T}_{t} = \frac{\mathbf{T}_{t-1} \cdot W_{t-1} + \mathbf{T}_{\text{obs}} \cdot R_i}{W_{t-1} + R_i}$$
+Download the official checkpoint and place it in the `backend/model_weights` directory:
 
-$$W_t = W_{t-1} + R_i, \quad N_t = N_{t-1} + 1$$
+```bash
+# From the backend directory
+mkdir -p model_weights
+curl -L -o model_weights/sam_vit_b_01ec64.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+```
 
-Where:
-- $\mathbf{T}_t$: The updated regional consensus feature tensor (normalized intensity histogram, channel means, standard deviation, and texture Laplacian variance).
-- $\mathbf{T}_{\text{obs}}$: The statistical visual feature representation extracted from the newly registered photo crop.
-- $W_t$: Cumulative reliability weight ($\sum R_i$).
-- $R_i \in [0, 1]$: Module 2 composite reliability score of the observation.
-- $N_t$: Total observation count for the active version.
+- **File Path**: `backend/model_weights/sam_vit_b_01ec64.pth`
+- **Expected Architecture**: ViT-B (`vit_b`)
 
-This mathematical formulation guarantees that low-reliability photos barely perturb the consensus memory, while high-reliability observations update the baseline appropriately.
+### What happens if the SAM checkpoint is missing?
 
-### Lifecycle & Versioning Mechanism
-
-1. **Cold-Start Initialization (`initialize_consensus_state`)**:
-   - The first-ever observation for a region initializes **Version 1** with $W = R_1$, $N = 1$, `structural_health_index = 1.0` (assumed pristine), and baseline feature tensor $\mathbf{T}_1 = \mathbf{T}_{\text{obs}}$.
-2. **Incremental Running Updates (`update_consensus_state`)**:
-   - Subsequent observations update the active `ConsensusState` row in place, blending feature tensors and incrementing $W$ and $N$.
-   - `structural_health_index` is preserved and untouched by consensus memory (health assessment is handled downstream by Module 4: Anomaly Validation).
-3. **Major Recalibration & Version Reset (`create_new_consensus_version`)**:
-   - Following verified conservation/restoration work, a new version ($V_{k+1}$) is created via `POST /api/v1/consensus/{region_id}/reset`.
-   - Resets $W=0.0$, $N=0$, $\mathbf{T}=\text{null}$ (to be populated by the next post-restoration photo), while retaining historical versions in the database.
-
-### API Endpoints
-
-- `GET /api/v1/consensus/{region_id}`: Retrieve active consensus memory tensor, version, and health metrics for a region.
-- `POST /api/v1/consensus/update`: Manually incorporate an observation into regional consensus memory.
-- `POST /api/v1/consensus/{region_id}/reset`: Increment consensus version following structural restoration, logging the `reset_reason`.
-
-
+- **When AI segmentation is invoked**: If `USE_AI_SEGMENTATION=True` and the checkpoint is not found at `settings.SAM_CHECKPOINT_PATH`, `SAMSegmenter.load_model()` logs an error and raises a `FileNotFoundError` with download instructions.
+- **Graceful Fallback**: If `USE_AI_SEGMENTATION=False` (set via `.env`), or when the expert selects the architectural region directly from the registered list, ingestion bypasses SAM segmentation and performs standard homography alignment against the region's latest baseline without requiring model weights.
 
 ---
 
 ## 🗄️ Database Architecture (PostgreSQL, UUID, & JSONB)
 
-Ancestra uses **PostgreSQL** for its persistent database layer, leveraging native PostgreSQL features for scalability, geospatial and telemetry analysis, and data integrity:
+Ancestra uses **PostgreSQL 15+** with SQLAlchemy ORM and Alembic migrations:
 
-- **UUID Primary Keys**: All tables use `UUID` (v4) primary keys via `sqlalchemy.dialects.postgresql.UUID(as_uuid=True)` for distributed uniqueness across crowdsourced clients.
-- **Native JSONB Columns**: High-speed binary JSON (`JSONB`) is utilized for semi-structured metadata:
-  - `observations.exif_data` (indexed via a PostgreSQL **GIN index** for fast key/value queries)
-  - `observations.reliability_factors`
-  - `regions.bounding_box` and `regions.reference_features`
-  - `consensus_states.consensus_tensor`
-  - `anomaly_validations.defect_polygon`
-  - `evidence_logs.payload`
-- **PostgreSQL Arrays**: `anomaly_validations.corroborating_observation_ids` uses native `ARRAY(UUID)` to track corroborating crowd observations without complex join overhead.
-- **Integrity Constraints & Triggers**:
-  - Check constraints for metrics: `structural_health_index` $\in [0.0, 1.0]$, `severity_score` $\in [0.0, 1.0]$, `urgency_index` $\in [0.0, 1.0]$.
-  - Unique constraint on `(work_order_id, block_index)` for immutable cryptographic hash chaining on `evidence_logs`.
-  - Database triggers execute `update_updated_at_column()` on `UPDATE` operations.
+- **UUID Primary Keys**: All tables utilize UUID (v4) primary keys for unique distributed entity identification.
+- **JSONB Metadata**: EXIF headers, bounding boxes, defect polygons, and cryptographic audit payloads are stored in native PostgreSQL `JSONB` columns with GIN indexing for fast queries.
+- **Cryptographic Audit Log**: `evidence_logs` table enforces an immutable block sequence per work order with `(work_order_id, block_index)` uniqueness and previous-hash verification.
 
-### Table Schema Summary
+### Database Entities
 
-1. **`monuments`**: Core heritage site asset records (UUID `id`, `name`, `location_name`, `latitude`, `longitude`, `heritage_status`, `importance_tier`, timestamps).
-2. **`regions`**: Architectural sub-components (`monument_id` FK, `name`, `category`, `bounding_box` JSONB, `reference_features` JSONB).
-3. **`observations`**: Crowdsourced photo submissions (`monument_id` FK, `region_id` FK, image quality triage scores, `exif_data` JSONB with GIN index, registration metadata, `reliability_factors` JSONB).
-4. **`consensus_states`**: Continuous running Bayesian state per region (`region_id` FK, `consensus_tensor` JSONB, `cumulative_reliability`, `structural_health_index` [0, 1]).
-5. **`anomaly_validations`**: Validated defects (`region_id` FK, `anomaly_type`, `ssim_delta`, `severity_score` [0, 1], `corroborating_observation_ids` ARRAY(UUID), `defect_polygon` JSONB).
-6. **`work_orders`**: Prioritized conservation dispatches (`validation_id` FK, `urgency_index` [0, 1], `status`, `assigned_team`, `recommended_action`).
-7. **`evidence_logs`**: Immutable SHA-256 hash-chained audit blocks (`work_order_id` FK, `block_index`, `previous_hash`, `current_hash`, `payload` JSONB, unique on `(work_order_id, block_index)`).
+1. **`monuments`**: Monitored heritage structures (name, location, coordinates, heritage status, importance tier).
+2. **`regions`**: Architectural components belonging to a monument (name, category, bounding box).
+3. **`observations`**: Photographic inspection records with quality scores, EXIF metadata, and registration metrics.
+4. **`anomaly_validations`**: SSIM delta records, severity scores, anomaly types, and defect bounding boxes.
+5. **`work_orders`**: Actionable conservation work orders with urgency indices and assigned field teams.
+6. **`evidence_logs`**: SHA-256 hash-chained audit blocks for verifiable tamper-evident compliance.
+7. **`users`**: Authenticated conservation experts and administrative users.
 
 ---
 
-## 🚀 Setup & Execution
+## 🚀 Installation & Local Execution
 
-### 1. PostgreSQL Database Initialization
-
-Ensure PostgreSQL 15+ is installed and running locally:
+### 1. Database Initialization
 
 ```sql
--- Connect via psql:
 CREATE USER ancestra_user WITH PASSWORD 'ancestra_password';
 CREATE DATABASE ancestra_db OWNER ancestra_user;
 CREATE DATABASE ancestra_test_db OWNER ancestra_user;
@@ -148,67 +107,62 @@ GRANT ALL PRIVILEGES ON DATABASE ancestra_test_db TO ancestra_user;
 
 ### 2. Environment Configuration
 
-Copy `.env.example` to `.env` and configure connection strings:
-
 ```bash
 cp .env.example .env
 ```
 
+Key environment variables in `.env`:
+
 ```env
 DATABASE_URL=postgresql://ancestra_user:ancestra_password@localhost:5432/ancestra_db
 TEST_DATABASE_URL=postgresql://ancestra_user:ancestra_password@localhost:5432/ancestra_test_db
+SAM_CHECKPOINT_PATH=model_weights/sam_vit_b_01ec64.pth
+SAM_MODEL_TYPE=vit_b
+USE_AI_SEGMENTATION=true
+JWT_SECRET_KEY=your-secure-jwt-secret
+GOOGLE_CLIENT_ID=your-google-oauth-client-id
+GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
 ```
 
-### 3. Migrations (Alembic)
-
-Apply database migrations:
+### 3. Database Migrations
 
 ```bash
-# Apply migrations to primary database
 alembic upgrade head
 ```
 
-To recreate or inspect the schema:
+### 4. Running the Development Server
 
 ```bash
-# Check current migration revision
-alembic current
-
-# Rollback and re-apply
-alembic downgrade base
-alembic upgrade head
-```
-
-### 4. Running the Application
-
-```bash
-# Start FastAPI server with live reload
 uvicorn app.main:app --reload --port 8000
 ```
 
-Interactive API documentation will be available at:
+Interactive API documentation:
 - **Swagger UI**: `http://localhost:8000/docs`
 - **ReDoc**: `http://localhost:8000/redoc`
 
 ---
 
-## 🧪 Testing with Isolated Test Database
+## 🧪 Testing
 
-Tests run against the dedicated `ancestra_test_db` PostgreSQL database:
+Run test suites against the isolated test database:
 
 ```bash
-# Run full test suite with pytest
 pytest tests -v
 ```
 
-### Recreating the Test Database
+---
 
-If you ever need to reset the test database from scratch:
+## 🔮 Planned / Not Implemented in Current Flow
 
-```sql
-DROP DATABASE IF EXISTS ancestra_test_db;
-CREATE DATABASE ancestra_test_db OWNER ancestra_user;
-GRANT ALL PRIVILEGES ON DATABASE ancestra_test_db TO ancestra_user;
-```
+The following experimental features and algorithmic modules exist in the codebase for research reference but are **not part of the active expert inspection flow**:
 
-The test runner automatically creates all required tables and executes tests within transactional rollbacks for complete isolation.
+1. **Continuous Running Bayesian Tensor Blending (`ConsensusMemoryModule`)**:
+   - Continuous weighted merging of multi-channel histogram and texture feature tensors across unverified crowd uploads ($T_t = \frac{T_{t-1} W_{t-1} + T_{obs} R_i}{W_{t-1} + R_i}$).
+   - The current expert flow uses explicit pairwise observation-to-baseline SSIM comparisons instead of continuous feature tensor blending.
+
+2. **Crowdsourced Multi-Observer Corroboration**:
+   - Clustering unverified observations from multiple independent crowd contributors within spatial-temporal windows before confirming structural anomalies.
+   - The current production pipeline processes verified expert submissions directly.
+
+3. **Automated Reliability Scoring Hook in Ingestion**:
+   - `auto_score_reliability` in `ImageIngestionModule.ingest()` is set to `False` by default for expert uploads, reserving Module 2 reliability scoring for crowdsourced or multi-vantage datasets.

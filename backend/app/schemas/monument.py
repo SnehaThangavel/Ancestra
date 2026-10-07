@@ -13,6 +13,7 @@ class MonumentBase(BaseModel):
     longitude: Optional[float] = Field(None, description="GPS longitude coordinate")
     heritage_status: Optional[str] = Field("UNESCO World Heritage Site", description="Heritage classification")
     importance_tier: int = Field(1, ge=1, le=5, description="Tier 1 (highest) to Tier 5")
+    image_url: Optional[str] = Field(None, description="High-resolution imagery asset URL")
 
 
 class MonumentCreate(MonumentBase):
@@ -26,6 +27,7 @@ class MonumentUpdate(BaseModel):
     longitude: Optional[float] = None
     heritage_status: Optional[str] = None
     importance_tier: Optional[int] = None
+    image_url: Optional[str] = None
 
 
 class MonumentResponse(MonumentBase):

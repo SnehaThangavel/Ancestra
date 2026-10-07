@@ -51,19 +51,8 @@ def _map_monument_response(mon: Monument, db: Session) -> MonumentResponse:
 
     code = f"HST-{str(mon.id)[:4].upper()}"
     
-    # Default image covers based on monument name
-    image_url = None
-    lower_name = mon.name.lower()
-    if "shore" in lower_name:
-        image_url = "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
-    elif "brihadisvara" in lower_name or "thanjavur" in lower_name:
-        image_url = "https://images.unsplash.com/photo-1600100397608-f090742f4949?auto=format&fit=crop&q=80&w=800"
-    elif "hampi" in lower_name:
-        image_url = "https://images.unsplash.com/photo-1627894099419-f5ebba5e3f42?auto=format&fit=crop&q=80&w=800"
-    elif "konark" in lower_name:
-        image_url = "https://images.unsplash.com/photo-1596402184320-417e7178b2cd?auto=format&fit=crop&q=80&w=800"
-    else:
-        image_url = "https://images.unsplash.com/photo-1596402184320-417e7178b2cd?auto=format&fit=crop&q=80&w=800"
+    # Use database image_url or reliable heritage fallback
+    image_url = mon.image_url or "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
 
     return MonumentResponse(
         id=mon.id,
@@ -80,6 +69,7 @@ def _map_monument_response(mon: Monument, db: Session) -> MonumentResponse:
         circle="ASI Directorate",
         description="",
         image=image_url,
+        image_url=image_url,
         last_assessment=last_assessment,
         created_at=mon.created_at,
         updated_at=mon.updated_at,

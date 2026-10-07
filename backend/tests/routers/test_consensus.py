@@ -40,14 +40,27 @@ def test_get_region_consensus_success_and_not_found(
     resp_404 = client.get(f"/api/v1/consensus/{reg.id}")
     assert resp_404.status_code == 404
 
-    # 2. Add ConsensusState
-    obs_id = uuid.uuid4()
+    # 2. Add Observation and ConsensusState
+    obs = Observation(
+        id=uuid.uuid4(),
+        monument_id=mon.id,
+        region_id=reg.id,
+        user_id="test_user@heritage.org",
+        image_url="test_photo.jpg",
+        blur_score=120.0,
+        glare_score=0.05,
+        is_valid_quality=True,
+        created_at=datetime.now(timezone.utc),
+    )
+    db_session.add(obs)
+    db_session.commit()
+
     cs = ConsensusState(
         id=uuid.uuid4(),
         region_id=reg.id,
         version=1,
-        baseline_observation_id=obs_id,
-        last_updated_by_observation_id=obs_id,
+        baseline_observation_id=obs.id,
+        last_updated_by_observation_id=obs.id,
         observation_count=1,
         structural_health_index=1.0,
     )
@@ -60,8 +73,8 @@ def test_get_region_consensus_success_and_not_found(
     data = resp_200.json()
     assert data["region_id"] == str(reg.id)
     assert data["version"] == 1
-    assert data["baseline_observation_id"] == str(obs_id)
-    assert data["last_observation_id"] == str(obs_id)
+    assert data["baseline_observation_id"] == str(obs.id)
+    assert data["last_observation_id"] == str(obs.id)
     assert data["structural_health_index"] == 1.0
 
 
