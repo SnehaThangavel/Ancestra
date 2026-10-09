@@ -74,21 +74,42 @@ export function ResultsPage() {
     );
   }
 
-  const res = activeResult || {
-    id: "ASM-2026-089",
-    siteName: "Shore Temple, Mahabalipuram",
-    regionName: "East-Facing Rajasimhesvara Vimana",
-    regionCode: "REG-001",
-    date: new Date().toISOString().split("T")[0],
-    damageType: "Structural Crack",
-    severity: "High",
-    confidence: 0.94,
-    damageTrend: "Increasing",
-    emergencyLevel: "Critical",
-    recommendation: "Immediate structural shoring & salt extraction desalting regimen required.",
-    status: "Pending Review",
-    imageUrl: "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
-  };
+  if (!activeResult) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        <div>
+          <h1 className="font-serif-heading" style={{ fontSize: "22px", margin: "0 0 4px 0" }}>
+            AI STRUCTURAL DAMAGE ASSESSMENT RESULT
+          </h1>
+          <p style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+            Published structural intelligence results and neural damage segmentation.
+          </p>
+        </div>
+
+        <div className="ancestra-card" style={styles.unpublishedCard}>
+          <div style={styles.lockIconBox}>
+            <FileText size={28} color="#A04022" />
+          </div>
+          <h2 className="font-serif-heading" style={{ fontSize: "18px", margin: "0 0 6px 0", color: "#1C1917" }}>
+            NO ASSESSMENT RESULT AVAILABLE
+          </h2>
+          <p style={{ fontSize: "13px", color: "var(--text-secondary)", maxWidth: "480px", margin: "0 0 20px 0", lineHeight: "1.4" }}>
+            No active structural damage assessment has been executed or selected yet.
+          </p>
+          <button
+            onClick={() => navigate("/expert/image-analysis")}
+            className="btn-primary"
+            style={{ padding: "10px 18px", fontSize: "12px" }}
+          >
+            <span>Start New Image Analysis</span>
+            <ArrowRight size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const res = activeResult;
 
   const handleConfirm = () => {
     updateAssessmentStatus(res.id, "Confirmed", notes);

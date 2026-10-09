@@ -127,14 +127,14 @@ export function Sidebar() {
             )}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={styles.userName}>{currentUser?.name || "Dr. A. Sharma"}</div>
-            <div style={styles.userTitle}>{currentUser?.title || "Lead Conservator (ASI)"}</div>
+            <div style={styles.userName}>{currentUser?.name || "Authenticated User"}</div>
+            <div style={styles.userTitle}>{currentUser?.title || (isAdmin ? "System Administrator" : isExpert ? "Conservation Specialist" : "Staff")}</div>
           </div>
         </div>
 
         <div style={styles.roleStaticRow}>
           <span style={styles.roleStaticValue}>
-            {isExpert ? "CONSERVATION EXPERT" : "ADMINISTRATOR"}
+            {currentUser?.role ? currentUser.role.replace("_", " ") : (isExpert ? "CONSERVATION EXPERT" : "ADMINISTRATOR")}
           </span>
           <button
             onClick={handleConfirmLogout}

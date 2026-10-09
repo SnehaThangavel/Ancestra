@@ -5,13 +5,7 @@ const AppContext = createContext();
 
 export function AppProvider({ children }) {
   // Authentication & Current User Role
-  const [currentUser, setCurrentUser] = useState({
-    id: "usr_exp_01",
-    name: "Dr. A. Sharma",
-    title: "Lead Conservator (ASI)",
-    email: "a.sharma@asi.gov.in",
-    role: "CONSERVATION_EXPERT", // "CONSERVATION_EXPERT" or "ADMINISTRATOR"
-  });
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [isAuthenticated, setIsAuthenticated] = useState(() => !!getAccessToken());
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -75,7 +69,15 @@ export function AppProvider({ children }) {
 
       let loadedRegions = [];
       if (regionsData.status === "fulfilled" && Array.isArray(regionsData.value)) {
-        loadedRegions = regionsData.value;
+        loadedRegions = regionsData.value.map((r) => {
+          const mId = r.monument_id || r.siteId || "";
+          return {
+            ...r,
+            monument_id: mId,
+            siteId: mId,
+            code: r.code || `REG-${String(r.id || "").substring(0, 4).toUpperCase() || "001"}`,
+          };
+        });
         setArchitecturalRegions(loadedRegions);
       }
 
@@ -236,13 +238,15 @@ export function AppProvider({ children }) {
   }, [refreshAppData]);
 
   // Auth Handlers
-  const loginWithGoogle = () => {
+  const loginWithGoogle = useCallback(() => {
     window.location.href = api.getGoogleLoginUrl();
-  };
+  }, []);
 
-  const handleAuthCallback = async (accessToken, refreshToken) => {
+  const handleAuthCallback = useCallback(async (accessToken, refreshToken) => {
     try {
-      setTokens(accessToken, refreshToken);
+      if (accessToken) {
+        setTokens(accessToken, refreshToken);
+      }
       const userProfile = await api.getMe();
       if (userProfile && userProfile.email) {
         const isAdm =
@@ -270,34 +274,32 @@ export function AppProvider({ children }) {
       setIsAuthenticated(false);
       return { success: false, message: err.message || "Failed to authenticate session." };
     }
-  };
+  }, [refreshAppData, showToast]);
 
-  const login = (email, password) => {
-    if (email.includes("admin") || email.includes("ranganathan")) {
+  const login = (email, _password) => {
+    if (import.meta.env.DEV) {
+      if (!email) {
+        return { success: false, message: "Please enter an email address." };
+      }
+      const isAdm = email.toLowerCase().includes("admin");
+      const nameParts = email.split("@")[0].split(/[._]/);
+      const formattedName = nameParts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" ");
       const user = {
-        id: "adm_01",
-        name: "S. Ranganathan",
-        title: "Director General (ASI)",
+        id: `usr_${Date.now()}`,
+        name: formattedName || "Conservation Specialist",
+        title: isAdm ? "Director General (ASI)" : "Lead Conservator (ASI)",
         email: email,
-        role: "ADMINISTRATOR",
+        role: isAdm ? "ADMINISTRATOR" : "CONSERVATION_EXPERT",
       };
       setCurrentUser(user);
       setIsAuthenticated(true);
-      showToast("Signed in as Administrator.");
-      return { success: true, user };
-    } else {
-      const user = {
-        id: "exp_01",
-        name: "Dr. A. Sharma",
-        title: "Lead Conservator (ASI)",
-        email: email,
-        role: "CONSERVATION_EXPERT",
-      };
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-      showToast("Signed in as Conservation Expert.");
+      showToast(`Signed in as ${user.role === "ADMINISTRATOR" ? "Administrator" : "Conservation Expert"}.`);
       return { success: true, user };
     }
+    return {
+      success: false,
+      message: "Direct password authentication is disabled. Please sign in with Google SSO.",
+    };
   };
 
   const registerUser = (userData) => {
@@ -391,7 +393,7 @@ export function AppProvider({ children }) {
       const targetSite = heritageSites.find((s) => s.id === siteId);
       await api.deleteMonument(siteId);
       setHeritageSites((prev) => prev.filter((site) => site.id !== siteId));
-      setArchitecturalRegions((prev) => prev.filter((reg) => reg.monument_id !== siteId));
+      setArchitecturalRegions((prev) => prev.filter((reg) => (reg.monument_id || reg.siteId) !== siteId));
       showToast(`HERITAGE SITE "${targetSite?.name || ""}" DELETED.`);
     } catch (err) {
       console.error("Failed to delete heritage site:", err);
@@ -402,21 +404,28 @@ export function AppProvider({ children }) {
   // Architectural Regions Direct DB CRUD Handlers
   const addArchitecturalRegion = async (regionData) => {
     try {
+      const targetMonId = regionData.siteId || regionData.monument_id;
       const created = await api.createRegion({
-        monument_id: regionData.siteId || regionData.monument_id,
+        monument_id: targetMonId,
         name: regionData.name,
         category: regionData.category || "facade",
       });
-      setArchitecturalRegions((prev) => [created, ...prev]);
+      const normalizedCreated = {
+        ...created,
+        monument_id: created.monument_id || targetMonId,
+        siteId: created.monument_id || targetMonId,
+        code: created.code || `REG-${String(created.id || "").substring(0, 4).toUpperCase() || "001"}`,
+      };
+      setArchitecturalRegions((prev) => [normalizedCreated, ...prev]);
       setHeritageSites((prev) =>
         prev.map((site) =>
-          site.id === created.monument_id
+          site.id === normalizedCreated.monument_id
             ? { ...site, regions_count: (site.regions_count || 0) + 1 }
             : site
         )
       );
       showToast(`ARCHITECTURAL REGION "${regionData.name}" CREATED.`);
-      return created;
+      return normalizedCreated;
     } catch (err) {
       console.error("Failed to create region:", err);
       showToast("Failed to create region: " + err.message, "error");
@@ -431,7 +440,18 @@ export function AppProvider({ children }) {
         category: updatedData.category,
       });
       setArchitecturalRegions((prev) =>
-        prev.map((reg) => (reg.id === regionId ? { ...reg, ...updated } : reg))
+        prev.map((reg) => {
+          if (reg.id === regionId) {
+            const mId = updated.monument_id || reg.monument_id || reg.siteId;
+            return {
+              ...reg,
+              ...updated,
+              monument_id: mId,
+              siteId: mId,
+            };
+          }
+          return reg;
+        })
       );
       showToast("ARCHITECTURAL REGION UPDATED.");
     } catch (err) {

@@ -1,21 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../context/AppContext";
-import { RegisterModal } from "../components/auth/RegisterModal";
-import { Building2, Lock, Mail, ArrowRight, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { Building2 } from "lucide-react";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const { login, loginWithGoogle, isAuthenticated, isAuthLoading } = useApp();
-
-  const [emailOrPhone, setEmailOrPhone] = useState("a.sharma@asi.gov.in");
-  const [password, setPassword] = useState("password123");
-  const [showPassword, setShowPassword] = useState(false);
-  const [selectedRolePreset, setSelectedRolePreset] = useState("EXPERT"); // "EXPERT" or "ADMIN"
-
-  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
-  const [successMsg, setSuccessMsg] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
 
   // If already logged in, redirect directly to dashboard
   useEffect(() => {
@@ -23,37 +13,6 @@ export function LoginPage() {
       navigate("/dashboard", { replace: true });
     }
   }, [isAuthenticated, isAuthLoading, navigate]);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setErrorMsg("");
-    setSuccessMsg("");
-
-    const res = login(emailOrPhone, password);
-    if (res.success) {
-      navigate("/dashboard");
-    } else {
-      setErrorMsg(res.message);
-    }
-  };
-
-  const handleRegisterSuccess = (registeredIdentifier) => {
-    setEmailOrPhone(registeredIdentifier);
-    setPassword("");
-    setSuccessMsg("Account created successfully. Please sign in with your credentials.");
-  };
-
-  const handleRoleSelect = (roleType) => {
-    setSelectedRolePreset(roleType);
-    if (roleType === "EXPERT") {
-      setEmailOrPhone("a.sharma@asi.gov.in");
-      setPassword("password123");
-    } else {
-      setEmailOrPhone("s.ranganathan@ancestra.org");
-      setPassword("password123");
-    }
-    setErrorMsg("");
-  };
 
   return (
     <div style={styles.pageContainer} className="paper-grid">
@@ -75,28 +34,14 @@ export function LoginPage() {
 
         <div style={styles.divider} />
 
-        <div style={{ marginBottom: "16px" }}>
+        <div style={{ marginBottom: "20px" }}>
           <h2 className="font-serif-heading" style={{ fontSize: "16px", margin: 0 }}>
-            WELCOME BACK
+            WELCOME TO ANCESTRA
           </h2>
-          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
-            Sign in to access your heritage structural conservation workspace.
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+            Sign in with your verified organization account to access the heritage conservation workspace.
           </p>
         </div>
-
-        {/* Success / Error Banners */}
-        {successMsg && (
-          <div style={styles.successBanner}>
-            <CheckCircle size={14} color="#16A34A" />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        {errorMsg && (
-          <div style={styles.errorBanner}>
-            <span>{errorMsg}</span>
-          </div>
-        )}
 
         {/* Google OAuth Login Button */}
         <div style={styles.googleSection}>
@@ -105,7 +50,7 @@ export function LoginPage() {
             onClick={loginWithGoogle}
             style={styles.googleBtn}
             id="google-signin-button"
-            title="Sign in securely with your Google Workspace or Personal Account"
+            title="Sign in securely with Google SSO"
           >
             <svg style={styles.googleIcon} viewBox="0 0 24 24" width="18" height="18">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -117,120 +62,38 @@ export function LoginPage() {
           </button>
         </div>
 
-        {/* Divider */}
-        <div style={styles.orDivider}>
-          <div style={styles.orLine} />
-          <span style={styles.orText}>OR SIGN IN WITH CREDENTIALS</span>
-          <div style={styles.orLine} />
-        </div>
-
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div className="form-group">
-            <label className="form-label">EMAIL OR PHONE NUMBER</label>
-            <div style={styles.inputWrapper}>
-              <Mail size={15} color="#8E857B" style={styles.inputIcon} />
-              <input
-                type="text"
-                className="form-input"
-                style={{ paddingLeft: "34px" }}
-                placeholder="Enter email or phone number"
-                value={emailOrPhone}
-                onChange={(e) => setEmailOrPhone(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">PASSWORD</label>
-            <div style={styles.inputWrapper}>
-              <Lock size={15} color="#8E857B" style={styles.inputIcon} />
-              <input
-                type={showPassword ? "text" : "password"}
-                className="form-input"
-                style={{ paddingLeft: "34px", paddingRight: "34px" }}
-                placeholder="Enter password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+        {/* Development Mode Bypass (Strictly DEV Only) */}
+        {import.meta.env.DEV && (
+          <div style={styles.devBox}>
+            <div style={styles.devHeader}>LOCAL DEVELOPMENT MODE</div>
+            <p style={styles.devSub}>Simulate session without active Google OAuth credentials in local dev:</p>
+            <div style={{ display: "flex", gap: "8px" }}>
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={styles.eyeBtn}
-                title={showPassword ? "Hide Password" : "Show Password"}
+                onClick={() => {
+                  const res = login("expert@ancestra.org");
+                  if (res.success) navigate("/dashboard");
+                }}
+                className="btn-secondary"
+                style={{ flex: 1, padding: "8px 10px", fontSize: "11px" }}
               >
-                {showPassword ? <EyeOff size={14} color="#8E857B" /> : <Eye size={14} color="#8E857B" />}
+                Sign in as Expert (Dev)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const res = login("admin@ancestra.org");
+                  if (res.success) navigate("/dashboard");
+                }}
+                className="btn-secondary"
+                style={{ flex: 1, padding: "8px 10px", fontSize: "11px" }}
+              >
+                Sign in as Admin (Dev)
               </button>
             </div>
           </div>
-
-          <div style={styles.optionsRow}>
-            <a href="#forgot" onClick={(e) => e.preventDefault()} style={styles.forgotLink}>
-              FORGOT PASSWORD?
-            </a>
-          </div>
-
-          <button type="submit" className="btn-primary" style={{ width: "100%", padding: "10px", marginTop: "4px" }}>
-            <span>SIGN IN</span>
-            <ArrowRight size={14} />
-          </button>
-        </form>
-
-        {/* Change 3: YOUR ROLE (Visually Highlighted Active Preset) */}
-        <div style={styles.roleSelectionRow}>
-          <span style={styles.yourRoleLabel}>YOUR ROLE:</span>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <button
-              type="button"
-              onClick={() => handleRoleSelect("EXPERT")}
-              style={{
-                ...styles.roleTabBtn,
-                color: selectedRolePreset === "EXPERT" ? "var(--accent-primary)" : "#8E857B",
-                fontWeight: selectedRolePreset === "EXPERT" ? "700" : "500",
-                borderBottom: selectedRolePreset === "EXPERT" ? "2px solid var(--accent-primary)" : "2px solid transparent",
-                backgroundColor: selectedRolePreset === "EXPERT" ? "#F7EDE9" : "transparent"
-              }}
-            >
-              EXPERT
-            </button>
-            <span style={{ color: "var(--border-color)", fontSize: "11px" }}>|</span>
-            <button
-              type="button"
-              onClick={() => handleRoleSelect("ADMIN")}
-              style={{
-                ...styles.roleTabBtn,
-                color: selectedRolePreset === "ADMIN" ? "var(--accent-primary)" : "#8E857B",
-                fontWeight: selectedRolePreset === "ADMIN" ? "700" : "500",
-                borderBottom: selectedRolePreset === "ADMIN" ? "2px solid var(--accent-primary)" : "2px solid transparent",
-                backgroundColor: selectedRolePreset === "ADMIN" ? "#F7EDE9" : "transparent"
-              }}
-            >
-              ADMIN
-            </button>
-          </div>
-        </div>
-
-        {/* Registration Footer */}
-        <div style={styles.registerFooter}>
-          <span style={{ color: "var(--text-secondary)" }}>NEW TO ANCESTRA?</span>
-          <button
-            type="button"
-            onClick={() => setIsRegisterOpen(true)}
-            style={styles.createAccountBtn}
-          >
-            CREATE ACCOUNT
-          </button>
-        </div>
+        )}
       </div>
-
-      {/* Registration Modal */}
-      <RegisterModal
-        isOpen={isRegisterOpen}
-        onClose={() => setIsRegisterOpen(false)}
-        onSuccess={handleRegisterSuccess}
-      />
     </div>
   );
 }
@@ -283,33 +146,12 @@ const styles = {
     backgroundColor: "var(--border-color)",
     marginBottom: "18px"
   },
-  successBanner: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "8px 10px",
-    backgroundColor: "#F0FDF4",
-    border: "1px solid #BBF7D0",
-    borderRadius: "4px",
-    color: "#16A34A",
-    fontSize: "11.5px",
-    marginBottom: "12px"
-  },
-  errorBanner: {
-    padding: "8px 10px",
-    backgroundColor: "#FEF2F2",
-    border: "1px solid #FCA5A5",
-    borderRadius: "4px",
-    color: "#DC2626",
-    fontSize: "11.5px",
-    marginBottom: "12px"
-  },
   googleSection: {
     marginBottom: "14px"
   },
   googleBtn: {
     width: "100%",
-    height: "40px",
+    height: "42px",
     backgroundColor: "#FFFFFF",
     border: "1.5px solid var(--border-color)",
     borderRadius: "4px",
@@ -329,109 +171,24 @@ const styles = {
   googleIcon: {
     flexShrink: 0
   },
-  orDivider: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    margin: "12px 0 16px 0"
+  devBox: {
+    marginTop: "20px",
+    padding: "14px",
+    backgroundColor: "#FAF8F5",
+    border: "1px dashed var(--border-color)",
+    borderRadius: "6px"
   },
-  orLine: {
-    flex: 1,
-    height: "1px",
-    backgroundColor: "var(--border-light)"
-  },
-  orText: {
-    fontSize: "9.5px",
+  devHeader: {
+    fontSize: "10px",
     fontFamily: "var(--font-mono)",
     fontWeight: "700",
-    color: "var(--text-muted)",
-    letterSpacing: "0.08em"
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "14px"
-  },
-  inputWrapper: {
-    position: "relative",
-    display: "flex",
-    alignItems: "center"
-  },
-  inputIcon: {
-    position: "absolute",
-    left: "10px",
-    top: "50%",
-    transform: "translateY(-50%)",
-    pointerEvents: "none"
-  },
-  eyeBtn: {
-    position: "absolute",
-    right: "10px",
-    top: "50%",
-    transform: "translateY(-50%)",
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    padding: 0,
-    display: "flex",
-    alignItems: "center"
-  },
-  optionsRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    fontSize: "10.5px"
-  },
-  forgotLink: {
     color: "var(--accent-primary)",
-    textDecoration: "none",
-    fontWeight: "700",
-    letterSpacing: "0.04em",
-    fontFamily: "var(--font-mono)"
+    letterSpacing: "0.08em",
+    marginBottom: "4px"
   },
-  roleSelectionRow: {
-    marginTop: "16px",
-    paddingTop: "12px",
-    borderTop: "1px solid var(--border-light)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "10px"
-  },
-  yourRoleLabel: {
-    fontSize: "10.5px",
-    fontFamily: "var(--font-mono)",
-    fontWeight: "700",
-    color: "#8E857B",
-    letterSpacing: "0.06em"
-  },
-  roleTabBtn: {
-    border: "none",
-    padding: "3px 8px",
-    borderRadius: "3px",
-    fontSize: "10.5px",
-    fontFamily: "var(--font-mono)",
-    cursor: "pointer",
-    transition: "all 0.12s ease"
-  },
-  registerFooter: {
-    marginTop: "16px",
-    paddingTop: "14px",
-    borderTop: "1px dashed var(--border-color)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    fontSize: "11.5px"
-  },
-  createAccountBtn: {
-    background: "none",
-    border: "none",
-    color: "var(--accent-primary)",
-    fontWeight: "700",
-    fontFamily: "var(--font-mono)",
+  devSub: {
     fontSize: "11px",
-    cursor: "pointer",
-    letterSpacing: "0.04em"
+    color: "var(--text-secondary)",
+    margin: "0 0 10px 0"
   }
 };

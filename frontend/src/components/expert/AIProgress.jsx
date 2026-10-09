@@ -49,9 +49,9 @@ export function AIProgress({ onCompleteResults }) {
       <div style={styles.stepsList}>
         {steps.map((stepItem, idx) => {
           const stepNum = idx + 1;
-          const isDone = stepNum < pipelineStep || (stepNum === 9 && isPipelineComplete);
-          const isCurrent = stepNum === pipelineStep && !isPipelineComplete;
-          const isPending = stepNum > pipelineStep;
+          const isDone = isPipelineComplete ? true : stepNum < pipelineStep;
+          const isCurrent = !isPipelineComplete && stepNum === pipelineStep;
+          const isPending = !isPipelineComplete && stepNum > pipelineStep;
 
           return (
             <div

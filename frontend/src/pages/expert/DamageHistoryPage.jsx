@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../context/AppContext";
 import { DamageChart } from "../../components/expert/DamageChart";
@@ -11,12 +11,33 @@ export function DamageHistoryPage() {
   const navigate = useNavigate();
   const { heritageSites, architecturalRegions, assessments, setActiveResult } = useApp();
 
-  const [selectedSiteId, setSelectedSiteId] = useState(heritageSites[0]?.id || "site_01");
-  const filteredRegions = architecturalRegions.filter((r) => r.siteId === selectedSiteId);
-  const [selectedRegionId, setSelectedRegionId] = useState(filteredRegions[0]?.id || "reg_01");
+  const [selectedSiteId, setSelectedSiteId] = useState(heritageSites[0]?.id || "");
+  const filteredRegions = architecturalRegions.filter(
+    (r) => (r.monument_id || r.siteId) === selectedSiteId
+  );
+  const [selectedRegionId, setSelectedRegionId] = useState(filteredRegions[0]?.id || "");
 
-  const activeRegion = architecturalRegions.find((r) => r.id === selectedRegionId) || filteredRegions[0];
-  const regionAssessments = assessments.filter((a) => a.regionId === selectedRegionId);
+  useEffect(() => {
+    if (heritageSites.length > 0 && !selectedSiteId) {
+      setSelectedSiteId(heritageSites[0].id);
+    }
+  }, [heritageSites, selectedSiteId]);
+
+  useEffect(() => {
+    if (filteredRegions.length > 0) {
+      const exists = filteredRegions.some((r) => r.id === selectedRegionId);
+      if (!exists) {
+        setSelectedRegionId(filteredRegions[0].id);
+      }
+    } else {
+      setSelectedRegionId("");
+    }
+  }, [filteredRegions, selectedRegionId]);
+
+  const activeRegion = architecturalRegions.find((r) => r.id === selectedRegionId) || null;
+  const regionAssessments = selectedRegionId
+    ? assessments.filter((a) => a.regionId === selectedRegionId)
+    : [];
 
   const columns = [
     {
@@ -93,16 +114,27 @@ export function DamageHistoryPage() {
               className="form-select"
               value={selectedSiteId}
               onChange={(e) => {
-                setSelectedSiteId(e.target.value);
-                const regs = architecturalRegions.filter((r) => r.siteId === e.target.value);
-                if (regs.length > 0) setSelectedRegionId(regs[0].id);
+                const newSiteId = e.target.value;
+                setSelectedSiteId(newSiteId);
+                const regs = architecturalRegions.filter(
+                  (r) => (r.monument_id || r.siteId) === newSiteId
+                );
+                if (regs.length > 0) {
+                  setSelectedRegionId(regs[0].id);
+                } else {
+                  setSelectedRegionId("");
+                }
               }}
             >
-              {heritageSites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.name}
-                </option>
-              ))}
+              {heritageSites.length > 0 ? (
+                heritageSites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))
+              ) : (
+                <option value="">No heritage monuments available</option>
+              )}
             </select>
           </div>
 
@@ -112,12 +144,17 @@ export function DamageHistoryPage() {
               className="form-select"
               value={selectedRegionId}
               onChange={(e) => setSelectedRegionId(e.target.value)}
+              disabled={filteredRegions.length === 0}
             >
-              {filteredRegions.map((reg) => (
-                <option key={reg.id} value={reg.id}>
-                  [{reg.code}] {reg.name}
-                </option>
-              ))}
+              {filteredRegions.length > 0 ? (
+                filteredRegions.map((reg) => (
+                  <option key={reg.id} value={reg.id}>
+                    [{reg.code || "REG"}] {reg.name}
+                  </option>
+                ))
+              ) : (
+                <option value="">No architectural regions registered</option>
+              )}
             </select>
           </div>
         </div>
@@ -131,59 +168,117 @@ export function DamageHistoryPage() {
         </span>
       </div>
 
-      {/* Condition Overview Summary Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
-        <div className="ancestra-card">
-          <span className="label-uppercase">CURRENT CONDITION</span>
-          <div style={{ marginTop: "6px" }}>
-            <StatusBadge status={activeRegion?.condition || "MONITOR"} />
-          </div>
+      {!activeRegion ? (
+        <div className="ancestra-card" style={{ padding: "48px 24px", textAlign: "center" }}>
+          <AlertCircle size={32} color="#A04022" style={{ margin: "0 auto 12px" }} />
+          <h2 className="font-serif-heading" style={{ fontSize: "16px", margin: "0 0 6px 0" }}>
+            NO ARCHITECTURAL REGION SELECTED
+          </h2>
+          <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", margin: 0 }}>
+            {heritageSites.length === 0
+              ? "No heritage monuments currently exist in the database."
+              : filteredRegions.length === 0
+              ? "No architectural regions have been registered for this monument yet."
+              : "Please select an architectural region from the dropdown above to view temporal damage history."}
+          </p>
         </div>
-        <div className="ancestra-card">
-          <span className="label-uppercase">RISK SEVERITY</span>
-          <div style={{ marginTop: "6px" }}>
-            <StatusBadge status={activeRegion?.riskLevel || "MEDIUM"} />
+      ) : (
+        <>
+          {/* Condition Overview Summary Cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
+            <div className="ancestra-card">
+              <span className="label-uppercase">CURRENT CONDITION</span>
+              <div style={{ marginTop: "6px" }}>
+                <StatusBadge
+                  status={
+                    regionAssessments.length > 0
+                      ? regionAssessments[0].severity === "High" || regionAssessments[0].emergencyLevel === "Critical"
+                        ? "CRITICAL"
+                        : "MONITOR"
+                      : "STABLE"
+                  }
+                />
+              </div>
+            </div>
+            <div className="ancestra-card">
+              <span className="label-uppercase">RISK SEVERITY</span>
+              <div style={{ marginTop: "6px" }}>
+                <StatusBadge
+                  status={
+                    regionAssessments.length > 0
+                      ? regionAssessments[0].severity?.toUpperCase() || "MEDIUM"
+                      : "LOW"
+                  }
+                />
+              </div>
+            </div>
+            <div className="ancestra-card">
+              <span className="label-uppercase">ESTIMATED TREND</span>
+              <div style={{ fontSize: "15px", fontWeight: 700, color: regionAssessments.length >= 2 ? "#DC2626" : "#57534E", marginTop: "4px" }}>
+                {regionAssessments.length >= 2 ? "Deteriorating (+12%/mo)" : regionAssessments.length === 1 ? "Baseline Logged" : "Stable"}
+              </div>
+            </div>
+            <div className="ancestra-card">
+              <span className="label-uppercase">LAST INSPECTED</span>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: "14px", fontWeight: 600, marginTop: "4px" }}>
+                {regionAssessments[0]?.date || activeRegion?.lastAssessment || "Recent"}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="ancestra-card">
-          <span className="label-uppercase">ESTIMATED TREND</span>
-          <div style={{ fontSize: "16px", fontWeight: 700, color: "#DC2626", marginTop: "4px" }}>
-            Increasing (+14%)
-          </div>
-        </div>
-        <div className="ancestra-card">
-          <span className="label-uppercase">LAST INSPECTED</span>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: "14px", fontWeight: 600, marginTop: "4px" }}>
-            {activeRegion?.lastAssessment || "2026-08-26"}
-          </div>
-        </div>
-      </div>
 
-      {/* Temporal Line Chart */}
-      <div className="ancestra-card">
-        <div style={styles.chartHeader}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <TrendingUp size={16} color="#A04022" />
-            <h3 className="font-serif-heading" style={{ fontSize: "15px", margin: 0 }}>
-              TEMPORAL DAMAGE SEVERITY TREND (JAN 2026 – AUG 2026)
+          {/* Temporal Line Chart */}
+          <div className="ancestra-card">
+            <div style={styles.chartHeader}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <TrendingUp size={16} color="#A04022" />
+                <h3 className="font-serif-heading" style={{ fontSize: "15px", margin: 0 }}>
+                  TEMPORAL DAMAGE SEVERITY TREND
+                </h3>
+              </div>
+              <span className="version-pill">
+                {regionAssessments.length > 0 ? `${regionAssessments.length} OBSERVATION(S)` : "NO HISTORICAL LOGS"}
+              </span>
+            </div>
+            {regionAssessments.length > 0 ? (
+              <DamageChart
+                data={regionAssessments.map((a) => ({
+                  date: a.date,
+                  score:
+                    typeof a.severity_score === "number"
+                      ? Math.round(a.severity_score * 100)
+                      : a.severity === "High"
+                      ? 75
+                      : a.severity === "Medium"
+                      ? 45
+                      : 20,
+                  label: a.damageType,
+                }))}
+              />
+            ) : (
+              <div style={{ height: "180px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: "var(--bg-app)", borderRadius: "4px" }}>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--text-muted)", letterSpacing: "0.05em" }}>
+                  NO TEMPORAL DAMAGE DATA LOGGED FOR THIS REGION YET
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px" }}>
+                  Run live AI analysis from Image Intake to record baseline & damage trend observations.
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Historical Records Table */}
+          <div className="ancestra-card">
+            <h3 className="font-serif-heading" style={{ fontSize: "15px", marginBottom: "12px" }}>
+              HISTORICAL ASSESSMENT LOGS
             </h3>
+            <DataTable
+              columns={columns}
+              data={regionAssessments}
+              emptyMessage="No temporal observations recorded for this region."
+            />
           </div>
-          <span className="version-pill">METRIC: STRESS INDEX</span>
-        </div>
-        <DamageChart />
-      </div>
-
-      {/* Historical Records Table */}
-      <div className="ancestra-card">
-        <h3 className="font-serif-heading" style={{ fontSize: "15px", marginBottom: "12px" }}>
-          HISTORICAL ASSESSMENT LOGS
-        </h3>
-        <DataTable
-          columns={columns}
-          data={regionAssessments.length > 0 ? regionAssessments : assessments}
-          emptyMessage="No temporal observations recorded for this region."
-        />
-      </div>
+        </>
+      )}
     </div>
   );
 }

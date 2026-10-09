@@ -8,7 +8,7 @@ export function ImageUploader({ selectedImage, onImageSelect, sampleImages = [] 
     const file = e.target.files[0];
     if (file) {
       const url = URL.createObjectURL(file);
-      onImageSelect({ file, url, name: file.name });
+      onImageSelect({ file, url, name: file.name, isCustomUpload: true });
     }
   };
 
@@ -17,7 +17,7 @@ export function ImageUploader({ selectedImage, onImageSelect, sampleImages = [] 
     const file = e.dataTransfer.files[0];
     if (file) {
       const url = URL.createObjectURL(file);
-      onImageSelect({ file, url, name: file.name });
+      onImageSelect({ file, url, name: file.name, isCustomUpload: true });
     }
   };
 
@@ -84,7 +84,7 @@ export function ImageUploader({ selectedImage, onImageSelect, sampleImages = [] 
               <button
                 key={idx}
                 type="button"
-                onClick={() => onImageSelect({ url: sample.url, name: sample.name })}
+                onClick={() => onImageSelect({ url: sample.url, name: sample.name, isCustomUpload: false })}
                 style={{
                   ...styles.sampleBtn,
                   ...(selectedImage?.url === sample.url ? styles.sampleBtnActive : {})

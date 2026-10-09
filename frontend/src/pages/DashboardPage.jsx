@@ -9,6 +9,7 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const {
     heritageSites,
+    architecturalRegions = [],
     assessments,
     notifications,
     currentUser,
@@ -79,10 +80,10 @@ export function DashboardPage() {
           iconColor="#A04022"
         />
 
-        {/* Card 2: TOTAL OBSERVATIONS (Static) */}
+        {/* Card 2: ARCHITECTURAL REGIONS (Real backend count) */}
         <StatCard
-          label="TOTAL OBSERVATIONS"
-          value="670"
+          label="ARCHITECTURAL REGIONS"
+          value={architecturalRegions.length}
           icon={Scan}
           iconBg="#DCFCE7"
           iconColor="#16A34A"

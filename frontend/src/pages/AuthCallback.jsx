@@ -10,6 +10,8 @@ export function AuthCallback() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function processAuth() {
       // 1. Check for query parameters (?access_token=...&refresh_token=...)
       let accessToken = searchParams.get("access_token");
@@ -23,32 +25,45 @@ export function AuthCallback() {
         refreshToken = hashParams.get("refresh_token");
       }
 
+      // 3. Check localStorage if already initialized
+      if (!accessToken) {
+        accessToken = localStorage.getItem("ancestra_access_token");
+        refreshToken = localStorage.getItem("ancestra_refresh_token");
+      }
+
       if (errorParam) {
-        setError(`Authentication Error: ${decodeURIComponent(errorParam)}`);
+        if (isMounted) setError(`Authentication Error: ${decodeURIComponent(errorParam)}`);
         return;
       }
 
       if (!accessToken) {
-        setError("Missing authentication token from OAuth provider.");
+        if (isMounted) setError("Missing authentication token from OAuth provider.");
         return;
       }
 
       try {
         const result = await handleAuthCallback(accessToken, refreshToken);
+        if (!isMounted) return;
+
         if (result.success) {
-          // Clean URL in history
           window.history.replaceState({}, document.title, window.location.pathname);
           navigate("/dashboard", { replace: true });
         } else {
           setError(result.message || "Failed to authenticate session.");
         }
       } catch (err) {
-        setError(err.message || "Failed to complete authentication handshake.");
+        if (isMounted) {
+          setError(err.message || "Failed to complete authentication handshake.");
+        }
       }
     }
 
     processAuth();
-  }, [searchParams, handleAuthCallback, navigate]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div style={styles.container} className="paper-grid">
