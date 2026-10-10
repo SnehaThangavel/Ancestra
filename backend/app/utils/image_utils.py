@@ -9,19 +9,23 @@ from PIL import Image
 
 
 def load_image_cv2(image_input: Union[str, Path, bytes]) -> np.ndarray:
-    """Load image from a file path or raw bytes as a BGR OpenCV ndarray.
+    """Load image from a file path, HTTP URL, or raw bytes as a BGR OpenCV ndarray."""
+    import urllib.request
 
-    Args:
-        image_input: File path (str/Path) or raw image bytes.
-
-    Returns:
-        np.ndarray: BGR image array.
-
-    Raises:
-        ValueError: If the image cannot be decoded or file is missing.
-    """
     if isinstance(image_input, (str, Path)):
         path_str = str(image_input)
+        if path_str.startswith("http://") or path_str.startswith("https://"):
+            try:
+                req = urllib.request.Request(path_str, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = resp.read()
+                nparr = np.frombuffer(data, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if img is not None:
+                    return img
+            except Exception as e:
+                raise ValueError(f"Unable to fetch image from URL '{path_str}': {e}")
+
         img = cv2.imread(path_str, cv2.IMREAD_COLOR)
         if img is None:
             raise ValueError(f"Unable to load image from path: {path_str}")
@@ -37,20 +41,18 @@ def load_image_cv2(image_input: Union[str, Path, bytes]) -> np.ndarray:
 
 
 def load_image_pil(image_input: Union[str, Path, bytes]) -> Image.Image:
-    """Load image from a file path or raw bytes as a PIL Image.
+    """Load image from a file path, HTTP URL, or raw bytes as a PIL Image."""
+    import urllib.request
 
-    Args:
-        image_input: File path (str/Path) or raw image bytes.
-
-    Returns:
-        Image.Image: Loaded PIL Image.
-
-    Raises:
-        ValueError: If PIL fails to open the image.
-    """
     try:
         if isinstance(image_input, (str, Path)):
-            img = Image.open(str(image_input))
+            path_str = str(image_input)
+            if path_str.startswith("http://") or path_str.startswith("https://"):
+                req = urllib.request.Request(path_str, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    data = resp.read()
+                return Image.open(io.BytesIO(data))
+            img = Image.open(path_str)
             img.load()
             return img
         elif isinstance(image_input, (bytes, bytearray)):
@@ -61,8 +63,8 @@ def load_image_pil(image_input: Union[str, Path, bytes]) -> Image.Image:
             return image_input
         else:
             raise TypeError(f"Unsupported image input type: {type(image_input)}")
-    except Exception as e:
-        raise ValueError(f"Failed to open image via PIL: {str(e)}") from e
+    except Exception as exc:
+        raise ValueError(f"Failed to load PIL image: {str(exc)}") from exc
 
 
 def compute_laplacian_variance(image: np.ndarray) -> float:

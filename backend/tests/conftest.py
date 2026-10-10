@@ -38,24 +38,22 @@ def compile_array_sqlite(type_, compiler, **kw):
 def compile_uuid_sqlite(type_, compiler, **kw):
     return "VARCHAR(36)"
 
-# Ensure tests use the PostgreSQL test database or fallback to SQLite in-memory for testing
-TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", settings.TEST_DATABASE_URL)
-if TEST_DB_URL.startswith("postgresql://"):
-    TEST_DB_URL = TEST_DB_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+# Ensure tests strictly use SQLite in-memory to prevent wiping remote database
+TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", "sqlite:///:memory:")
 
-try:
-    test_engine = create_engine(
-        TEST_DB_URL,
-        pool_pre_ping=True,
-        json_serializer=lambda obj: json.dumps(obj, default=str),
-    )
-    with test_engine.connect() as _test_conn:
-        pass
-except Exception:
+if "sqlite" in TEST_DB_URL:
     test_engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
+        json_serializer=lambda obj: json.dumps(obj, default=str),
+    )
+else:
+    if TEST_DB_URL.startswith("postgresql://"):
+        TEST_DB_URL = TEST_DB_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+    test_engine = create_engine(
+        TEST_DB_URL,
+        pool_pre_ping=True,
         json_serializer=lambda obj: json.dumps(obj, default=str),
     )
 

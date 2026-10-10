@@ -212,13 +212,36 @@ def list_all_anomalies(
         .all()
     )
 
+    if not records:
+        return []
+
+    # Batch fetch all associated regions in a single query
+    region_ids = {r.region_id for r in records if r.region_id}
+    regions = db.query(Region).filter(Region.id.in_(region_ids)).all() if region_ids else []
+    region_map = {reg.id: reg for reg in regions}
+
+    # Batch fetch all associated monuments in a single query
+    monument_ids = {reg.monument_id for reg in regions if reg.monument_id}
+    monuments = db.query(Monument).filter(Monument.id.in_(monument_ids)).all() if monument_ids else []
+    monument_map = {mon.id: mon for mon in monuments}
+
+    # Batch fetch all primary observations in a single query
+    primary_obs_ids = set()
+    for r in records:
+        p_id = _extract_primary_obs_id(r.corroborating_observation_ids)
+        if p_id:
+            primary_obs_ids.add(p_id)
+    
+    obs_list = db.query(Observation).filter(Observation.id.in_(primary_obs_ids)).all() if primary_obs_ids else []
+    obs_map = {o.id: o for o in obs_list}
+
     results = []
     for r in records:
-        reg = db.query(Region).filter(Region.id == r.region_id).first()
-        mon = db.query(Monument).filter(Monument.id == reg.monument_id).first() if reg else None
+        reg = region_map.get(r.region_id)
+        mon = monument_map.get(reg.monument_id) if reg and reg.monument_id else None
         
         primary_obs_id = _extract_primary_obs_id(r.corroborating_observation_ids)
-        obs = db.query(Observation).filter(Observation.id == primary_obs_id).first() if primary_obs_id else None
+        obs = obs_map.get(primary_obs_id) if primary_obs_id else None
 
         bboxes = []
         ssim_score = None
@@ -252,6 +275,15 @@ def list_all_anomalies(
             else:
                 img_url = f"http://localhost:8000/{obs.image_url.lstrip('/')}"
 
+        # Dynamic confidence score computation based on SSIM / severity
+        calc_confidence = 0.90
+        if ssim_score is not None:
+            calc_confidence = round(float(ssim_score), 2)
+        elif r.ssim_delta is not None:
+            calc_confidence = round(max(0.65, min(0.98, 1.0 - float(r.ssim_delta))), 2)
+        else:
+            calc_confidence = round(max(0.72, min(0.96, 0.82 + (r.severity_score * 0.14))), 2)
+
         results.append({
             "id": f"ASM-{str(r.id)[:8].upper()}",
             "validation_id": str(r.id),
@@ -266,7 +298,7 @@ def list_all_anomalies(
             "severity_score": r.severity_score,
             "ssim_score": ssim_score,
             "ssim_delta": r.ssim_delta,
-            "confidence": 0.94 if r.severity_score > 0.1 else 0.88,
+            "confidence": calc_confidence,
             "damageTrend": "Increasing" if r.severity_score > 0.2 else "Stable",
             "emergencyLevel": emergency_level,
             "recommendation": (
@@ -277,6 +309,7 @@ def list_all_anomalies(
             "status": status_text,
             "imageUrl": img_url,
             "defect_bounding_boxes": bboxes,
+            "defect_polygon": r.defect_polygon,
             "expertNotes": f"SSIM Delta: {r.ssim_delta:.4f}, Severity: {r.severity_score:.4f}" if r.ssim_delta is not None else "",
             "created_at": r.created_at.isoformat(),
         })

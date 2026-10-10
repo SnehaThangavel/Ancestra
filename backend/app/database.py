@@ -10,16 +10,22 @@ db_url = settings.DATABASE_URL
 if db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-# Configure SQLite connect_args if using SQLite
-connect_args = {}
+# Configure database engine with persistent connection pool
 if db_url.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
-
-engine = create_engine(
-    db_url,
-    connect_args=connect_args,
-    pool_pre_ping=True,
-)
+    engine = create_engine(
+        db_url,
+        connect_args={"check_same_thread": False},
+        pool_pre_ping=True,
+    )
+else:
+    engine = create_engine(
+        db_url,
+        pool_size=10,
+        max_overflow=20,
+        pool_timeout=30,
+        pool_recycle=1800,
+        pool_pre_ping=True,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

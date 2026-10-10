@@ -90,7 +90,93 @@ def list_monuments(
             (Monument.name.ilike(search_fmt)) | (Monument.location_name.ilike(search_fmt))
         )
     monuments = query.order_by(Monument.name.asc()).all()
-    return [_map_monument_response(m, db) for m in monuments]
+    if not monuments:
+        return []
+
+    mon_ids = [m.id for m in monuments]
+
+    # Batch 1: Region count per monument
+    region_counts = (
+        db.query(Region.monument_id, func.count(Region.id))
+        .filter(Region.monument_id.in_(mon_ids))
+        .group_by(Region.monument_id)
+        .all()
+    )
+    reg_count_map = {m_id: count for m_id, count in region_counts}
+
+    # Batch 2: Latest observation per monument
+    latest_obs_list = (
+        db.query(Observation)
+        .filter(Observation.monument_id.in_(mon_ids))
+        .order_by(Observation.created_at.desc())
+        .all()
+    )
+    obs_map = {}
+    for obs in latest_obs_list:
+        if obs.monument_id not in obs_map:
+            obs_map[obs.monument_id] = obs
+
+    # Batch 3: All regions and their consensus states
+    regions_all = db.query(Region.id, Region.monument_id).filter(Region.monument_id.in_(mon_ids)).all()
+    mon_to_reg_ids = {}
+    all_reg_ids = []
+    for reg_id, m_id in regions_all:
+        all_reg_ids.append(reg_id)
+        mon_to_reg_ids.setdefault(m_id, []).append(reg_id)
+
+    cs_records = (
+        db.query(ConsensusState.region_id, ConsensusState.structural_health_index)
+        .filter(ConsensusState.region_id.in_(all_reg_ids))
+        .all()
+    ) if all_reg_ids else []
+    reg_health_map = {r_id: health for r_id, health in cs_records}
+
+    responses = []
+    for mon in monuments:
+        regions_count = reg_count_map.get(mon.id, 0)
+        latest_obs = obs_map.get(mon.id)
+        last_assessment = latest_obs.created_at.strftime("%Y-%m-%d") if latest_obs else mon.created_at.strftime("%Y-%m-%d")
+
+        # Determine status label from mapped consensus health scores
+        status_label = "MONITOR"
+        reg_ids = mon_to_reg_ids.get(mon.id, [])
+        if reg_ids:
+            health_vals = [reg_health_map[r_id] for r_id in reg_ids if r_id in reg_health_map and reg_health_map[r_id] is not None]
+            if health_vals:
+                min_health = min(health_vals)
+                if min_health < 0.70:
+                    status_label = "CRITICAL"
+                elif min_health < 0.90:
+                    status_label = "MONITOR"
+                else:
+                    status_label = "STABLE"
+
+        code = f"HST-{str(mon.id)[:4].upper()}"
+        image_url = mon.image_url or "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
+
+        responses.append(
+            MonumentResponse(
+                id=mon.id,
+                code=code,
+                name=mon.name,
+                location_name=mon.location_name or "India",
+                latitude=mon.latitude,
+                longitude=mon.longitude,
+                heritage_status=mon.heritage_status or "UNESCO World Heritage Site",
+                importance_tier=mon.importance_tier or 1,
+                regions_count=regions_count,
+                status=status_label,
+                material="Granite & Dressed Freestone Blocks",
+                circle="ASI Directorate",
+                description="",
+                image=image_url,
+                image_url=image_url,
+                last_assessment=last_assessment,
+                created_at=mon.created_at,
+                updated_at=mon.updated_at,
+            )
+        )
+    return responses
 
 
 @router.post("", response_model=MonumentResponse, status_code=status.HTTP_201_CREATED, summary="Create a new heritage monument")

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { api, getAccessToken, getRefreshToken, setTokens, clearTokens } from "../services/api";
 
 const AppContext = createContext();
@@ -17,6 +17,9 @@ export function AppProvider({ children }) {
   const [reports, setReports] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
+
+  // In-flight refresh promise deduplication
+  const refreshPromiseRef = useRef(null);
 
   // AI Perception Pipeline Progress State
   const [pipelineStep, setPipelineStep] = useState(1);
@@ -46,113 +49,129 @@ export function AppProvider({ children }) {
     }, 4000);
   }, []);
 
-  // Fetch all initial data directly from database via backend API
+  // Fetch all initial data directly from database via backend API (deduplicated & batched)
   const refreshAppData = useCallback(async () => {
-    setIsLoadingData(true);
-    try {
-      // 1. Fetch Monuments & Regions
-      const [monumentsData, regionsData, anomaliesData, workOrdersData] = await Promise.allSettled([
-        api.getMonuments(),
-        api.getRegions(),
-        api.getAnomalies(),
-        api.getWorkOrders(),
-      ]);
-
-      let loadedSites = [];
-      if (monumentsData.status === "fulfilled" && Array.isArray(monumentsData.value)) {
-        loadedSites = monumentsData.value;
-        setHeritageSites(loadedSites);
-        if (loadedSites.length > 0 && !activeSiteId) {
-          setActiveSiteId(loadedSites[0].id);
-        }
-      }
-
-      let loadedRegions = [];
-      if (regionsData.status === "fulfilled" && Array.isArray(regionsData.value)) {
-        loadedRegions = regionsData.value.map((r) => {
-          const mId = r.monument_id || r.siteId || "";
-          return {
-            ...r,
-            monument_id: mId,
-            siteId: mId,
-            code: r.code || `REG-${String(r.id || "").substring(0, 4).toUpperCase() || "001"}`,
-          };
-        });
-        setArchitecturalRegions(loadedRegions);
-      }
-
-      // 2. Fetch Assessments / Anomalies
-      let loadedAnomalies = [];
-      if (anomaliesData.status === "fulfilled" && Array.isArray(anomaliesData.value)) {
-        loadedAnomalies = anomaliesData.value;
-        setAssessments(loadedAnomalies);
-        if (loadedAnomalies.length > 0) {
-          setActiveResult(loadedAnomalies[0]);
-        }
-      }
-
-      // 3. Build Reports from Anomalies & Work Orders
-      const compiledReports = loadedAnomalies.map((anom, idx) => ({
-        id: `REP-2026-${String(idx + 1).padStart(3, "0")}`,
-        assessmentId: anom.id,
-        validation_id: anom.validation_id,
-        siteName: anom.siteName,
-        regionName: anom.regionName,
-        regionCode: anom.regionCode,
-        date: anom.date,
-        damageType: anom.damageType,
-        severity: anom.severity,
-        confidence: typeof anom.confidence === "number" ? `${(anom.confidence * 100).toFixed(0)}%` : anom.confidence,
-        emergencyLevel: anom.emergencyLevel,
-        status: anom.status === "Confirmed" ? "Assessed & Verified" : "Generated",
-        expertName: "Dr. A. Sharma",
-        summary: anom.recommendation,
-      }));
-      setReports(compiledReports);
-
-      // 4. Derive dynamic notifications from anomalies and system alerts
-      const derivedNotifs = [];
-      loadedAnomalies.forEach((anom) => {
-        if (anom.severity === "High" || anom.emergencyLevel === "Critical") {
-          derivedNotifs.push({
-            id: `notif_${anom.id}`,
-            eventKey: `crit_${anom.id}`,
-            title: "CRITICAL DAMAGE DETECTED",
-            description: `${anom.regionName} [${anom.regionCode}] recorded ${anom.damageType} (AI Confidence: ${(anom.confidence * 100).toFixed(0)}%).`,
-            time: anom.date,
-            priority: "CRITICAL",
-            read: false,
-            link: "/expert/results",
-          });
-        }
-      });
-
-      if (workOrdersData.status === "fulfilled" && Array.isArray(workOrdersData.value)) {
-        workOrdersData.value.forEach((wo) => {
-          derivedNotifs.push({
-            id: `notif_wo_${wo.id}`,
-            eventKey: `wo_${wo.id}`,
-            title: `WORK ORDER [${wo.priority}]: ${wo.status}`,
-            description: wo.description || "Conservation repair order generated.",
-            time: wo.created_at ? wo.created_at.split("T")[0] : "Recent",
-            priority: wo.priority === "HIGH" || wo.priority === "URGENT" ? "URGENT" : "INFORMATION",
-            read: false,
-            link: "/reports",
-          });
-        });
-      }
-
-      setNotifications(derivedNotifs);
-    } catch (err) {
-      console.error("Failed to load initial data from backend API:", err);
-    } finally {
-      setIsLoadingData(false);
+    if (refreshPromiseRef.current) {
+      return refreshPromiseRef.current;
     }
+
+    const task = (async () => {
+      setIsLoadingData(true);
+      try {
+        // 1. Fetch Monuments, Regions, Anomalies, and Work Orders concurrently
+        const [monumentsData, regionsData, anomaliesData, workOrdersData] = await Promise.allSettled([
+          api.getMonuments(),
+          api.getRegions(),
+          api.getAnomalies(),
+          api.getWorkOrders(),
+        ]);
+
+        let loadedSites = [];
+        if (monumentsData.status === "fulfilled" && Array.isArray(monumentsData.value)) {
+          loadedSites = monumentsData.value;
+          setHeritageSites(loadedSites);
+          if (loadedSites.length > 0 && !activeSiteId) {
+            setActiveSiteId(loadedSites[0].id);
+          }
+        }
+
+        let loadedRegions = [];
+        if (regionsData.status === "fulfilled" && Array.isArray(regionsData.value)) {
+          loadedRegions = regionsData.value.map((r) => {
+            const mId = r.monument_id || r.siteId || "";
+            return {
+              ...r,
+              monument_id: mId,
+              siteId: mId,
+              code: r.code || `REG-${String(r.id || "").substring(0, 4).toUpperCase() || "001"}`,
+            };
+          });
+          setArchitecturalRegions(loadedRegions);
+        }
+
+        // 2. Fetch Assessments / Anomalies
+        let loadedAnomalies = [];
+        if (anomaliesData.status === "fulfilled" && Array.isArray(anomaliesData.value)) {
+          loadedAnomalies = anomaliesData.value;
+          setAssessments(loadedAnomalies);
+          if (loadedAnomalies.length > 0) {
+            setActiveResult(loadedAnomalies[0]);
+          }
+        }
+
+        // 3. Build Reports from Anomalies & Work Orders
+        const compiledReports = loadedAnomalies.map((anom, idx) => ({
+          id: `REP-2026-${String(idx + 1).padStart(3, "0")}`,
+          assessmentId: anom.id,
+          validation_id: anom.validation_id,
+          siteName: anom.siteName,
+          regionName: anom.regionName,
+          regionCode: anom.regionCode,
+          date: anom.date,
+          damageType: anom.damageType,
+          severity: anom.severity,
+          confidence: typeof anom.confidence === "number" ? `${(anom.confidence * 100).toFixed(0)}%` : anom.confidence,
+          emergencyLevel: anom.emergencyLevel,
+          status: anom.status === "Confirmed" ? "Assessed & Verified" : "Generated",
+          expertName: "Dr. A. Sharma",
+          summary: anom.recommendation,
+        }));
+        setReports(compiledReports);
+
+        // 4. Derive dynamic notifications from anomalies and system alerts
+        const derivedNotifs = [];
+        loadedAnomalies.forEach((anom) => {
+          if (anom.severity === "High" || anom.emergencyLevel === "Critical") {
+            derivedNotifs.push({
+              id: `notif_${anom.id}`,
+              eventKey: `crit_${anom.id}`,
+              title: "CRITICAL DAMAGE DETECTED",
+              description: `${anom.regionName} [${anom.regionCode}] recorded ${anom.damageType} (AI Confidence: ${(anom.confidence * 100).toFixed(0)}%).`,
+              time: anom.date,
+              priority: "CRITICAL",
+              read: false,
+              link: "/expert/results",
+            });
+          }
+        });
+
+        if (workOrdersData.status === "fulfilled" && Array.isArray(workOrdersData.value)) {
+          workOrdersData.value.forEach((wo) => {
+            derivedNotifs.push({
+              id: `notif_wo_${wo.id}`,
+              eventKey: `wo_${wo.id}`,
+              title: `WORK ORDER [${wo.priority}]: ${wo.status}`,
+              description: wo.description || "Conservation repair order generated.",
+              time: wo.created_at ? wo.created_at.split("T")[0] : "Recent",
+              priority: wo.priority === "HIGH" || wo.priority === "URGENT" ? "URGENT" : "INFORMATION",
+              read: false,
+              link: "/reports",
+            });
+          });
+        }
+
+        setNotifications(derivedNotifs);
+      } catch (err) {
+        console.error("Failed to load initial data from backend API:", err);
+      } finally {
+        setIsLoadingData(false);
+        refreshPromiseRef.current = null;
+      }
+    })();
+
+    refreshPromiseRef.current = task;
+    return task;
   }, [activeSiteId]);
 
   // Initialize Auth from stored JWT session, URL params, or backend on mount
   useEffect(() => {
     async function initAuth() {
+      // If currently processing OAuth callback on /auth/callback, let AuthCallback handle it
+      if (window.location.pathname.startsWith("/auth/callback")) {
+        setIsAuthLoading(false);
+        return;
+      }
+
       // 1. Check if tokens arrived in URL search params (?access_token=...&refresh_token=...)
       const searchParams = new URLSearchParams(window.location.search);
       let incomingAccessToken = searchParams.get("access_token");
@@ -230,8 +249,8 @@ export function AppProvider({ children }) {
       }
       setIsAuthLoading(false);
 
-      // Load DB records
-      await refreshAppData();
+      // Load DB records in background
+      refreshAppData().catch(() => {});
     }
 
     initAuth();
@@ -265,7 +284,8 @@ export function AppProvider({ children }) {
         setCurrentUser(mappedUser);
         setIsAuthenticated(true);
         showToast(`Welcome, ${mappedUser.name}! Signed in via Google.`);
-        await refreshAppData();
+        // Trigger background data load without delaying user navigation
+        refreshAppData().catch(() => {});
         return { success: true, user: mappedUser };
       }
       throw new Error("Unable to retrieve user profile from backend.");

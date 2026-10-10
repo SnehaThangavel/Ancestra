@@ -98,7 +98,85 @@ def list_regions(
         query = query.filter(Region.name.ilike(search_fmt))
         
     regions = query.order_by(Region.name.asc()).all()
-    return [_map_region_response(r, db) for r in regions]
+    if not regions:
+        return []
+
+    # Batch fetch monuments
+    monument_ids = {r.monument_id for r in regions if r.monument_id}
+    monuments = db.query(Monument).filter(Monument.id.in_(monument_ids)).all() if monument_ids else []
+    monument_map = {m.id: m.name for m in monuments}
+
+    # Batch fetch latest consensus states
+    region_ids = [r.id for r in regions]
+    cs_records = (
+        db.query(ConsensusState)
+        .filter(ConsensusState.region_id.in_(region_ids))
+        .order_by(ConsensusState.version.desc())
+        .all()
+    )
+    cs_map = {}
+    for cs in cs_records:
+        if cs.region_id not in cs_map:
+            cs_map[cs.region_id] = cs
+
+    # Batch fetch latest observations
+    obs_records = (
+        db.query(Observation)
+        .filter(Observation.region_id.in_(region_ids))
+        .order_by(Observation.created_at.desc())
+        .all()
+    )
+    obs_map = {}
+    for obs in obs_records:
+        if obs.region_id not in obs_map:
+            obs_map[obs.region_id] = obs
+
+    responses = []
+    for reg in regions:
+        site_name = monument_map.get(reg.monument_id, "Unknown Monument")
+        cs = cs_map.get(reg.id)
+        health = cs.structural_health_index if cs else 1.0
+        
+        latest_obs = obs_map.get(reg.id)
+        last_assessment = latest_obs.created_at.strftime("%Y-%m-%d") if latest_obs else reg.created_at.strftime("%Y-%m-%d")
+
+        condition = "STABLE"
+        risk_level = "LOW"
+        damage_score = int((1.0 - health) * 100) if health is not None else 0
+        if health is not None:
+            if health < 0.70:
+                condition = "CRITICAL"
+                risk_level = "HIGH"
+            elif health < 0.90:
+                condition = "MONITOR"
+                risk_level = "MEDIUM"
+            else:
+                condition = "STABLE"
+                risk_level = "LOW"
+
+        code = f"REG-{str(reg.id)[:4].upper()}"
+
+        responses.append(
+            RegionResponse(
+                id=reg.id,
+                monument_id=reg.monument_id,
+                site_name=site_name,
+                name=reg.name,
+                category=reg.category or "facade",
+                bounding_box=reg.bounding_box,
+                reference_features=reg.reference_features,
+                code=code,
+                importance="Primary Structural Course",
+                condition=condition,
+                risk_level=risk_level,
+                damage_score=damage_score,
+                structural_health_index=health,
+                last_assessment=last_assessment,
+                created_at=reg.created_at,
+                updated_at=reg.updated_at,
+            )
+        )
+    return responses
 
 
 @router.post("", response_model=RegionResponse, status_code=status.HTTP_201_CREATED, summary="Create a new architectural region")

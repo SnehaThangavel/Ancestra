@@ -208,10 +208,14 @@ def seed():
         },
     ]
 
+    # Pre-fetch existing monuments and regions in one query
+    existing_monuments = db.query(Monument).all()
+    mon_map = {m.name.split(",")[0].split(" ")[0].lower(): m for m in existing_monuments}
+
     for s in sites:
-        short_name = s["name"].split(",")[0].split(" ")[0]
-        existing = db.query(Monument).filter(Monument.name.ilike(f"%{short_name}%")).first()
-        if not existing:
+        short_name = s["name"].split(",")[0].split(" ")[0].lower()
+        m = mon_map.get(short_name)
+        if not m:
             m = Monument(
                 id=uuid.uuid4(),
                 name=s["name"],
@@ -223,55 +227,99 @@ def seed():
                 image_url=s["image_url"],
             )
             db.add(m)
-            db.commit()
-            db.refresh(m)
-            print(f"Created Monument: {m.name} ({m.id})")
-            mon_id = m.id
-        else:
-            mon_id = existing.id
-            if not existing.image_url:
-                existing.image_url = s["image_url"]
-                db.commit()
-            print(f"Existing Monument: {existing.name} ({existing.id})")
+            mon_map[short_name] = m
+            print(f"Adding Monument: {m.name}")
+        elif not m.image_url:
+            m.image_url = s["image_url"]
+
+    db.flush()
+
+    existing_regions = db.query(Region).all()
+    reg_set = {(r.monument_id, r.name[:12].lower()) for r in existing_regions}
+
+    for s in sites:
+        short_name = s["name"].split(",")[0].split(" ")[0].lower()
+        m = mon_map.get(short_name)
+        if not m:
+            continue
 
         for r in s["regions"]:
-            reg_name_prefix = r["name"][:12]
-            reg_existing = (
-                db.query(Region)
-                .filter(Region.monument_id == mon_id, Region.name.ilike(f"%{reg_name_prefix}%"))
-                .first()
-            )
-            if not reg_existing:
+            reg_key = (m.id, r["name"][:12].lower())
+            if reg_key not in reg_set:
                 reg = Region(
                     id=uuid.uuid4(),
-                    monument_id=mon_id,
+                    monument_id=m.id,
                     name=r["name"],
                     category=r["category"],
                     image_url=r.get("image_url"),
                 )
                 db.add(reg)
-                db.commit()
-                db.refresh(reg)
+                reg_set.add(reg_key)
 
-                # Create initial consensus state v1 with health 1.0
-                cs = ConsensusState(
+    # Seed initial observation & anomaly findings if table is empty
+    from app.models.observation import Observation
+    from app.models.validation import AnomalyValidation
+    from app.models.work_order import WorkOrder
+
+    existing_anomalies_count = db.query(AnomalyValidation).count()
+    if existing_anomalies_count == 0:
+        all_regs = db.query(Region).all()
+        for idx, reg in enumerate(all_regs[:6]):
+            obs = Observation(
+                id=uuid.uuid4(),
+                monument_id=reg.monument_id,
+                region_id=reg.id,
+                image_url=reg.image_url or "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
+                blur_score=0.92,
+                sharpness_score=0.88,
+                overall_quality_score=0.90,
+                is_valid_quality=True,
+                registration_success=True,
+                registration_confidence=0.95,
+                reliability_score=0.89,
+            )
+            db.add(obs)
+
+            is_severe = idx == 0
+            is_medium = idx == 1 or idx == 2
+            severity_score = 0.45 if is_severe else (0.28 if is_medium else 0.08)
+            anomaly_type = "crack" if is_severe else ("surface_deterioration" if is_medium else "discoloration")
+            
+            val = AnomalyValidation(
+                id=uuid.uuid4(),
+                region_id=reg.id,
+                anomaly_type=anomaly_type,
+                ssim_delta=0.22 if is_severe else 0.12,
+                severity_score=severity_score,
+                corroboration_count=3 if is_severe else 1,
+                corroborating_observation_ids=[obs.id],
+                is_confirmed=True,
+                defect_polygon={
+                    "bounding_boxes": [[140, 180, 260, 210]] if is_severe else [[200, 300, 180, 150]],
+                    "ssim_score": 0.78 if is_severe else 0.88,
+                    "severity_score": severity_score,
+                },
+            )
+            db.add(val)
+
+            if is_severe or is_medium:
+                wo = WorkOrder(
                     id=uuid.uuid4(),
-                    region_id=reg.id,
-                    version=1,
-                    observation_count=0,
-                    structural_health_index=1.0,
+                    validation_id=val.id,
+                    urgency_index=0.85 if is_severe else 0.55,
+                    status="assigned" if is_severe else "pending",
+                    assigned_team="Dr. A. Sharma (ASI Lead)",
+                    recommended_action=f"Structural stabilization and surface repair for {anomaly_type.replace('_', ' ')} on {reg.name}.",
                 )
-                db.add(cs)
-                db.commit()
-                print(f"  Created Region: {reg.name} ({reg.id})")
-            elif not reg_existing.image_url and r.get("image_url"):
-                reg_existing.image_url = r.get("image_url")
-                db.commit()
+                db.add(wo)
+        print("  Seeded baseline observations, anomalies, and work orders.")
 
+    db.commit()
     db.close()
-    print("Seeding complete! 14 heritage monuments and regions populated.")
+    print("Fast batch seeding complete! Monuments, regions, and anomalies populated.")
 
 
 if __name__ == "__main__":
+    seed()
     seed()
 
