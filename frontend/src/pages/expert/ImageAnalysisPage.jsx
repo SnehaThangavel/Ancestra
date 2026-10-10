@@ -4,6 +4,7 @@ import { useApp } from "../../context/AppContext";
 import { ImageUploader } from "../../components/expert/ImageUploader";
 import { SectionCard } from "../../components/common/SectionCard";
 import { Cpu, ArrowRight, XCircle, Database } from "lucide-react";
+import { getMonumentImage, getRegionImage } from "../../utils/imageFallback";
 
 export function ImageAnalysisPage() {
   const navigate = useNavigate();
@@ -40,33 +41,32 @@ export function ImageAnalysisPage() {
     const site = heritageSites.find((s) => s.id === siteId);
     const region = architecturalRegions.find((r) => r.id === regionId);
 
-    const url =
-      region?.image_url ||
-      region?.image ||
-      site?.image_url ||
-      site?.image ||
-      "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800";
+    const url = getRegionImage(region, site);
 
     const cleanSiteName = site?.name?.split(",")[0]?.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase() || "heritage_site";
     const cleanRegName = region?.name?.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase() || "zone";
     const name = `${cleanSiteName}_${cleanRegName}_observation.jpg`;
 
-    return { url, name, isCustomUpload: false };
+    return { url, name, regionId: region?.id, isCustomUpload: false };
   };
 
   const [selectedImageData, setSelectedImageData] = useState(() => getSiteDefaultImage(selectedSiteId, selectedRegionId));
 
-  // Sync image with selected monument/region directly from DB record if not manually uploaded by user
+  // Sync image when selected monument or architectural region changes
   useEffect(() => {
-    if (selectedSiteId && !selectedImageData?.isCustomUpload) {
+    if (selectedSiteId && selectedRegionId && !selectedImageData?.isCustomUpload) {
       setSelectedImageData(getSiteDefaultImage(selectedSiteId, selectedRegionId));
     }
-  }, [selectedSiteId, selectedRegionId, heritageSites, architecturalRegions]);
+  }, [selectedSiteId, selectedRegionId, architecturalRegions]);
 
-  // Dynamically derive preset test assets from actual database heritage sites
-  const presetSamples = heritageSites.slice(0, 8).map((site) => ({
-    name: site.name.split(",")[0],
-    url: site.image_url || site.image || "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800",
+  // Dynamically derive preset test assets from the regions of the selected target monument
+  const siteObj = heritageSites.find((s) => s.id === selectedSiteId);
+  const presetRegionSamples = filteredRegions.map((reg) => ({
+    regionId: reg.id,
+    name: reg.name,
+    code: reg.code || `REG-${String(reg.id).substring(0, 4).toUpperCase()}`,
+    category: reg.category,
+    url: getRegionImage(reg, siteObj),
   }));
 
   const canSubmit = aiEngineStatus.online && aiEngineStatus.modelState !== "ERROR" && aiEngineStatus.modelState !== "MAINTENANCE";
@@ -74,8 +74,8 @@ export function ImageAnalysisPage() {
   const handleStartAnalysis = async () => {
     if (!canSubmit) return;
 
-    const siteObj = heritageSites.find((s) => s.id === selectedSiteId);
-    const regionObj = architecturalRegions.find((r) => r.id === selectedRegionId);
+    const currentSite = heritageSites.find((s) => s.id === selectedSiteId);
+    const currentRegion = architecturalRegions.find((r) => r.id === selectedRegionId);
 
     let fileToUpload = selectedImageData.file;
 
@@ -106,9 +106,9 @@ export function ImageAnalysisPage() {
 
     setPendingAnalysis({
       siteId: selectedSiteId,
-      siteName: siteObj ? siteObj.name : "Heritage Monument",
+      siteName: currentSite ? currentSite.name : "Heritage Monument",
       regionId: selectedRegionId,
-      regionName: regionObj ? regionObj.name : "Architectural Region",
+      regionName: currentRegion ? currentRegion.name : "Architectural Region",
       captureDate,
       sensorSpec,
       notes: observationNotes,
@@ -158,11 +158,9 @@ export function ImageAnalysisPage() {
                     const regs = architecturalRegions.filter(
                       (r) => (r.monument_id || r.siteId) === newSiteId
                     );
-                    if (regs.length > 0) {
-                      setSelectedRegionId(regs[0].id);
-                    } else {
-                      setSelectedRegionId("");
-                    }
+                    const firstRegId = regs.length > 0 ? regs[0].id : "";
+                    setSelectedRegionId(firstRegId);
+                    setSelectedImageData(getSiteDefaultImage(newSiteId, firstRegId));
                   }}
                 >
                   {heritageSites.length > 0 ? (
@@ -182,7 +180,11 @@ export function ImageAnalysisPage() {
                 <select
                   className="form-select"
                   value={selectedRegionId}
-                  onChange={(e) => setSelectedRegionId(e.target.value)}
+                  onChange={(e) => {
+                    const newRegionId = e.target.value;
+                    setSelectedRegionId(newRegionId);
+                    setSelectedImageData(getSiteDefaultImage(selectedSiteId, newRegionId));
+                  }}
                 >
                   {filteredRegions.length > 0 ? (
                     filteredRegions.map((reg) => (
@@ -238,8 +240,13 @@ export function ImageAnalysisPage() {
           <SectionCard title="2. LITHIC IMAGERY ASSET" subtitle="Upload RAW or lossless TIFF/JPEG photographic documentation.">
             <ImageUploader
               selectedImage={selectedImageData}
-              onImageSelect={(imgData) => setSelectedImageData(imgData)}
-              sampleImages={presetSamples}
+              onImageSelect={(imgData) => {
+                setSelectedImageData(imgData);
+                if (imgData.regionId) {
+                  setSelectedRegionId(imgData.regionId);
+                }
+              }}
+              sampleImages={presetRegionSamples}
             />
           </SectionCard>
         </div>
@@ -309,23 +316,23 @@ export function ImageAnalysisPage() {
 
 const styles = {
   engineNoticeBanner: {
-    padding: "10px 14px",
-    backgroundColor: "#FEF2F2",
-    border: "1px solid #FCA5A5",
-    borderRadius: "6px",
     display: "flex",
     alignItems: "center",
     gap: "10px",
+    padding: "10px 14px",
+    backgroundColor: "#FEF2F2",
+    border: "1px solid #FCA5A5",
+    borderRadius: "4px",
+    color: "#991B1B",
     fontSize: "12px",
-    color: "#DC2626",
   },
   pipelineHeader: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
-    paddingBottom: "10px",
-    borderBottom: "1px solid var(--border-light)",
-    marginBottom: "12px",
+    paddingBottom: "12px",
+    borderBottom: "1px solid var(--border-color)",
+    marginBottom: "14px",
   },
   pipelineSteps: {
     display: "flex",
@@ -335,18 +342,20 @@ const styles = {
   pipelineItem: {
     display: "flex",
     alignItems: "flex-start",
-    gap: "6px",
+    gap: "8px",
     fontSize: "11.5px",
     color: "var(--text-secondary)",
+    lineHeight: "1.35",
   },
   pipelineNum: {
     fontFamily: "var(--font-mono)",
-    fontWeight: "700",
-    color: "#8E857B",
+    fontWeight: 700,
+    color: "var(--accent-primary)",
+    fontSize: "11px",
   },
   simCard: {
-    backgroundColor: "#F5F1E9",
-    border: "1px solid #E3DDD3",
+    backgroundColor: "#FAF8F5",
+    border: "1px dashed var(--border-color)",
     borderRadius: "6px",
     padding: "14px",
   },

@@ -1,5 +1,6 @@
 import React, { useRef } from "react";
-import { UploadCloud, Image as ImageIcon, CheckCircle } from "lucide-react";
+import { UploadCloud, CheckCircle, Layers } from "lucide-react";
+import { handleImageError } from "../../utils/imageFallback";
 
 export function ImageUploader({ selectedImage, onImageSelect, sampleImages = [] }) {
   const fileInputRef = useRef(null);
@@ -39,16 +40,21 @@ export function ImageUploader({ selectedImage, onImageSelect, sampleImages = [] 
 
         {selectedImage ? (
           <div style={styles.previewBox}>
-            <img src={selectedImage.url} alt="Selected Heritage Asset" style={styles.previewImage} />
+            <img
+              src={selectedImage.url}
+              alt={selectedImage.name || "Architectural Region Asset"}
+              style={styles.previewImage}
+              onError={(e) => handleImageError(e, selectedImage.name)}
+            />
             <div style={styles.previewMeta}>
               <div style={styles.previewSuccess}>
                 <CheckCircle size={14} color="#16A34A" />
                 <span style={{ fontSize: "11px", fontWeight: 600, color: "#16A34A" }}>
-                  IMAGE READY FOR CV ANALYSIS
+                  ARCHITECTURAL REGION ASSET READY
                 </span>
               </div>
               <span style={{ fontSize: "11px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
-                {selectedImage.name || "heritage_observation_raw.jpg"}
+                {selectedImage.name || "regional_observation_raw.jpg"}
               </span>
               <button
                 type="button"
@@ -59,7 +65,7 @@ export function ImageUploader({ selectedImage, onImageSelect, sampleImages = [] 
                 className="btn-secondary"
                 style={{ padding: "4px 10px", fontSize: "11px", marginTop: "4px" }}
               >
-                Change Image
+                Upload Custom Capture
               </button>
             </div>
           </div>
@@ -68,32 +74,60 @@ export function ImageUploader({ selectedImage, onImageSelect, sampleImages = [] 
             <div style={styles.iconCircle}>
               <UploadCloud size={24} color="#A04022" />
             </div>
-            <div style={styles.promptTitle}>Drop heritage imagery file here</div>
+            <div style={styles.promptTitle}>Drop regional observation imagery here</div>
             <div style={styles.promptSubtitle}>OR CLICK TO CHOOSE FROM LOCAL DEVICE</div>
             <div style={styles.supportedText}>SUPPORTED FORMATS: RAW, LOSSLESS TIFF, JPEG, PNG (UP TO 50MB)</div>
           </div>
         )}
       </div>
 
-      {/* Preset Sample Images for Fast Testing */}
+      {/* Preset Regional Samples of the Selected Monument */}
       {sampleImages.length > 0 && (
         <div style={styles.sampleContainer}>
-          <span style={styles.sampleLabel}>OR SELECT PRESET TEST ASSET:</span>
+          <div style={styles.sampleHeader}>
+            <Layers size={13} color="#A04022" />
+            <span style={styles.sampleLabel}>
+              ARCHITECTURAL REGIONS OF THIS MONUMENT (CLICK TO SWITCH REGION & ASSET):
+            </span>
+          </div>
           <div style={styles.sampleGrid}>
-            {sampleImages.map((sample, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => onImageSelect({ url: sample.url, name: sample.name, isCustomUpload: false })}
-                style={{
-                  ...styles.sampleBtn,
-                  ...(selectedImage?.url === sample.url ? styles.sampleBtnActive : {})
-                }}
-              >
-                <img src={sample.url} alt={sample.name} style={styles.sampleThumb} />
-                <span style={styles.sampleName}>{sample.name}</span>
-              </button>
-            ))}
+            {sampleImages.map((sample, idx) => {
+              const isActive =
+                selectedImage?.regionId === sample.regionId ||
+                selectedImage?.url === sample.url;
+              return (
+                <button
+                  key={sample.regionId || idx}
+                  type="button"
+                  onClick={() =>
+                    onImageSelect({
+                      url: sample.url,
+                      name: `${sample.name.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()}_observation.jpg`,
+                      regionId: sample.regionId,
+                      isCustomUpload: false,
+                    })
+                  }
+                  style={{
+                    ...styles.sampleBtn,
+                    ...(isActive ? styles.sampleBtnActive : {}),
+                  }}
+                  title={`Inspect ${sample.name}`}
+                >
+                  <img
+                    src={sample.url}
+                    alt={sample.name}
+                    style={styles.sampleThumb}
+                    onError={(e) => handleImageError(e, sample.name)}
+                  />
+                  <div style={styles.sampleInfo}>
+                    <span style={styles.sampleName}>{sample.name}</span>
+                    {sample.code && (
+                      <span style={styles.sampleCode}>[{sample.code}]</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -106,16 +140,16 @@ const styles = {
     border: "2px dashed var(--border-color)",
     borderRadius: "6px",
     backgroundColor: "#FAF8F5",
-    padding: "24px",
+    padding: "20px",
     textAlign: "center",
     cursor: "pointer",
-    transition: "border-color 0.15s ease, background-color 0.15s ease"
+    transition: "border-color 0.15s ease, background-color 0.15s ease",
   },
   promptBox: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "6px"
+    gap: "6px",
   },
   iconCircle: {
     width: "44px",
@@ -125,92 +159,114 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: "4px"
+    marginBottom: "4px",
   },
   promptTitle: {
     fontFamily: "var(--font-serif)",
     fontWeight: "600",
     fontSize: "15px",
-    color: "var(--text-primary)"
+    color: "var(--text-primary)",
   },
   promptSubtitle: {
     fontSize: "10.5px",
     fontFamily: "var(--font-sans)",
     fontWeight: "700",
     letterSpacing: "0.08em",
-    color: "var(--accent-primary)"
+    color: "var(--accent-primary)",
   },
   supportedText: {
     fontSize: "10px",
     fontFamily: "var(--font-mono)",
     color: "var(--text-muted)",
-    marginTop: "4px"
+    marginTop: "4px",
   },
   previewBox: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "12px"
+    gap: "12px",
   },
   previewImage: {
     maxHeight: "220px",
     maxWidth: "100%",
     borderRadius: "4px",
     border: "1px solid var(--border-color)",
-    objectFit: "cover"
+    objectFit: "cover",
   },
   previewMeta: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "4px"
+    gap: "4px",
   },
   previewSuccess: {
     display: "flex",
     alignItems: "center",
-    gap: "6px"
+    gap: "6px",
   },
   sampleContainer: {
     marginTop: "14px",
     paddingTop: "12px",
-    borderTop: "1px dashed var(--border-light)"
+    borderTop: "1px dashed var(--border-light)",
+  },
+  sampleHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginBottom: "8px",
   },
   sampleLabel: {
     fontSize: "10px",
     fontWeight: "700",
-    letterSpacing: "0.08em",
+    letterSpacing: "0.06em",
     color: "var(--text-muted)",
-    display: "block",
-    marginBottom: "8px"
   },
   sampleGrid: {
-    display: "flex",
-    gap: "10px"
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+    gap: "8px",
   },
   sampleBtn: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
-    padding: "6px 10px",
+    padding: "6px 8px",
     backgroundColor: "#FFFFFF",
     border: "1px solid var(--border-color)",
     borderRadius: "4px",
     cursor: "pointer",
-    transition: "all 0.15s ease"
+    textAlign: "left",
+    transition: "all 0.15s ease",
   },
   sampleBtnActive: {
     borderColor: "var(--accent-primary)",
-    backgroundColor: "var(--accent-primary-light)"
+    backgroundColor: "var(--accent-primary-light)",
+    boxShadow: "0 0 0 1px var(--accent-primary)",
   },
   sampleThumb: {
-    width: "28px",
-    height: "28px",
+    width: "36px",
+    height: "36px",
     borderRadius: "3px",
-    objectFit: "cover"
+    objectFit: "cover",
+    flexShrink: 0,
+  },
+  sampleInfo: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
   },
   sampleName: {
     fontSize: "11px",
     fontWeight: "600",
-    color: "var(--text-primary)"
-  }
+    color: "var(--text-primary)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  sampleCode: {
+    fontSize: "9.5px",
+    fontFamily: "var(--font-mono)",
+    color: "var(--accent-primary)",
+    fontWeight: 700,
+  },
 };

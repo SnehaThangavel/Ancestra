@@ -4,6 +4,7 @@ import { useApp } from "../../context/AppContext";
 import { AIProgress } from "../../components/expert/AIProgress";
 import { api } from "../../services/api";
 import { toTitleCase } from "../../utils/formatters";
+import { handleImageError } from "../../utils/imageFallback";
 import { Sparkles } from "lucide-react";
 
 export function AIAnalysisPage() {
@@ -217,7 +218,12 @@ export function AIAnalysisPage() {
           </div>
 
           <div style={styles.imageContainer}>
-            <img src={imageSrc} alt="Target Observation" style={styles.previewImg} />
+            <img
+              src={imageSrc}
+              alt="Target Observation"
+              style={styles.previewImg}
+              onError={(e) => handleImageError(e, pendingAnalysis?.siteName)}
+            />
             <div style={styles.scanOverlay}>
               <div style={styles.scanLine} />
               <div style={styles.scanningBadge}>

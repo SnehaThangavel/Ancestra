@@ -4,6 +4,7 @@ import { useApp } from "../context/AppContext";
 import { StatCard } from "../components/common/StatCard";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { Landmark, Scan, Activity, ArrowRight, Cpu, Play } from "lucide-react";
+import { getMonumentImage, handleImageError } from "../utils/imageFallback";
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -132,7 +133,12 @@ export function DashboardPage() {
                 style={styles.clickableImageWrapper}
                 title={`Inspect ${site.name}`}
               >
-                <img src={site.image} alt={site.name} style={styles.cleanImage} />
+                <img
+                  src={getMonumentImage(site)}
+                  alt={site.name}
+                  style={styles.cleanImage}
+                  onError={(e) => handleImageError(e, site.name)}
+                />
               </div>
 
               <div style={styles.cardFooter}>

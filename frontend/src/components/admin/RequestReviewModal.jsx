@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useApp } from "../../context/AppContext";
 import { Modal } from "../common/Modal";
 import { CheckCircle, PlusCircle, XCircle, AlertTriangle } from "lucide-react";
+import { handleImageError } from "../../utils/imageFallback";
 
 export function RequestReviewModal({ isOpen, onClose, request, onAddDetails }) {
   const { acceptSiteRequest, rejectSiteRequest } = useApp();
@@ -69,7 +70,12 @@ export function RequestReviewModal({ isOpen, onClose, request, onAddDetails }) {
             SUBMITTED PHOTOGRAMMETRIC IMAGE
           </span>
           <div style={styles.imagePreviewBox}>
-            <img src={request.image} alt={request.siteName} style={styles.siteImage} />
+            <img
+              src={request.image}
+              alt={request.siteName}
+              style={styles.siteImage}
+              onError={(e) => handleImageError(e, request.siteName)}
+            />
           </div>
         </div>
 

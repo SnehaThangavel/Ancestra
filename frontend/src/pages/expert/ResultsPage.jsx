@@ -4,6 +4,7 @@ import { useApp } from "../../context/AppContext";
 import { StatusBadge } from "../../components/common/StatusBadge";
 import { EmergencyBadge } from "../../components/common/EmergencyBadge";
 import { generateAncestrapdfReport } from "../../utils/pdfGenerator";
+import { handleImageError } from "../../utils/imageFallback";
 import {
   CheckCircle,
   Edit3,
@@ -294,6 +295,7 @@ export function ResultsPage() {
                 src={res.imageUrl}
                 alt="Damage Assessment"
                 style={styles.resultImage}
+                onError={(e) => handleImageError(e, res.siteName)}
                 onLoad={(e) => {
                   if (e.target.naturalWidth && e.target.naturalHeight) {
                     setImgNaturalSize({ w: e.target.naturalWidth, h: e.target.naturalHeight });

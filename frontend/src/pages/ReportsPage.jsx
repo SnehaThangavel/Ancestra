@@ -5,6 +5,7 @@ import { StatusBadge } from "../components/common/StatusBadge";
 import { EmergencyBadge } from "../components/common/EmergencyBadge";
 import { Modal } from "../components/common/Modal";
 import { generateAncestrapdfReport } from "../utils/pdfGenerator";
+import { getMonumentImage, handleImageError } from "../utils/imageFallback";
 import { Search, Eye, FileDown } from "lucide-react";
 
 export function ReportsPage() {
@@ -172,11 +173,11 @@ export function ReportsPage() {
                 <img
                   src={
                     (assessments.find((a) => a.id === selectedReport.assessmentId)?.imageUrl) ||
-                    (heritageSites.find((s) => s.name === selectedReport.siteName)?.image) ||
-                    "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
+                    getMonumentImage(heritageSites.find((s) => s.name === selectedReport.siteName))
                   }
                   alt="Assessed Asset"
                   style={{ maxHeight: "200px", maxWidth: "100%", borderRadius: "4px", display: "block" }}
+                  onError={(e) => handleImageError(e, selectedReport.siteName)}
                 />
                 {/* Zone 1: Structural Delamination (Purple) */}
                 <div

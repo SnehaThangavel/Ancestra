@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field
 
-
 class UrgencyScoreResponse(BaseModel):
     """Response schema for multi-criteria urgency score computation."""
 
@@ -22,7 +21,6 @@ class UrgencyScoreResponse(BaseModel):
     deterioration_rate_per_day: float = 0.0
     trend_factor: float = 0.0
     rationale: str
-
 
 class WorkOrderCreate(BaseModel):
     """Request schema for creating/dispatching a conservation work order."""

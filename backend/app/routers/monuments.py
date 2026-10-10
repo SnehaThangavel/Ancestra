@@ -52,7 +52,7 @@ def _map_monument_response(mon: Monument, db: Session) -> MonumentResponse:
     code = f"HST-{str(mon.id)[:4].upper()}"
     
     # Use database image_url or reliable heritage fallback
-    image_url = mon.image_url or "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
+    image_url = mon.image_url or "/monuments/brihadisvara_temple.jpg"
 
     return MonumentResponse(
         id=mon.id,
@@ -152,7 +152,7 @@ def list_monuments(
                     status_label = "STABLE"
 
         code = f"HST-{str(mon.id)[:4].upper()}"
-        image_url = mon.image_url or "https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&q=80&w=800"
+        image_url = mon.image_url or "/monuments/brihadisvara_temple.jpg"
 
         responses.append(
             MonumentResponse(
